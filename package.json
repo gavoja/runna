@@ -37,15 +37,15 @@
     "test": "+server build.css.dist build:js:test copy:assets -test -server:stop",
     "dist": "build:css:dist build:js:dist copy:assets -foo",
     "build:js": {
-      "chain": "build:js - server:reload",
+      "chain": "build:js -server:reload",
       "watch": ["test/js/**/*.js"]
     },
     "build:css": {
-      "chain": "build:css - server:reload",
+      "chain": "build:css -server:reload",
       "watch": ["test/css/**/*.styl"]
     },
     "build:assets": {
-      "chain": "build:assets - server:reload",
+      "chain": "build:assets -server:reload",
       "watch": ["test/static/**/*"]
     }
   }
