@@ -24,14 +24,14 @@
     "build:css": "node tester.js build:css 1000",
     "build:js": "node tester.js build:js 1200",
     "build:assets": "node tester.js build:assets 300",
-    "server": "node ../runna-webserver/index.js -d",
+    "server": "node ../runna-webserver/index.js -w test",
     "server:stop": "node ../runna-webserver/index.js -x",
     "server:reload": "node ../runna-webserver/index.js -r",
     "test": "node tester.js test 2000"
   },
   "runna": {
-    "foo": "+server build:css build:js -server:reload -server:stop",
-    "bar": "server",
+    "foo": "+server build:css build:js -server:reload",
+    "bar": "+server",
     "baz": "build:js",
     "develop": "+server build:css build:js copy:assets -server:reload",
     "test": "+server build.css.dist build:js:test copy:assets -test -server:stop",
@@ -47,6 +47,10 @@
     "build:assets": {
       "chain": "build:assets -server:reload",
       "watch": ["test/static/**/*"]
+    },
+    "build:html": {
+      "chain": "server:reload",
+      "watch": ["test/**/*.html"]
     }
   }
 }

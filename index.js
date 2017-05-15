@@ -24,17 +24,6 @@ class Runner {
     this.queue = []
   }
 
-  getPipeline (name) {
-    let task = this.cfg.runna[name]
-    if (!task) {
-      console.error(`${PREFIX} ${ERR} Task does not exist: ${name}`)
-      return []
-    }
-
-    task = typeof task === 'string' ? task : task.chain
-    return task.replace(/\s+/g, ' ').split(' ')
-  }
-
   runScript (name) {
     return new Promise((resolve, reject) => {
       let done
@@ -73,8 +62,19 @@ class Runner {
         doReject()
       })
 
-      child.stdout.pipe(process.stdout)
-      child.stderr.pipe(process.stderr)
+      child.stdout.on('data', data => {
+        data.toString('utf8').trim().split('\n').forEach(line => {
+          process.stdout.write(`[${name}] ${line}\n`)
+        })
+      })
+
+      child.stderr.on('data', data => {
+        data.toString('utf8').trim().split('\n').forEach(line => {
+          process.stderr.write(`[${name}] ${line}\n`)
+        })
+      })
+      // child.stdout.pipe(process.stdout)
+      // child.stderr.pipe(process.stderr)
     })
   }
 
@@ -86,13 +86,18 @@ class Runner {
     })
   }
 
-  runPipeline (pipeline, callback) {
-    // Fire callback when pipeline is all processed.
-    if (!pipeline.length) {
-      callback && callback()
-      return
+  getPipeline (name) {
+    let task = this.cfg.runna[name]
+    if (!task) {
+      console.error(`${PREFIX} ${ERR} Task does not exist: ${name}`)
+      return []
     }
 
+    task = typeof task === 'string' ? task : task.chain
+    return task.replace(/\s+/g, ' ').split(' ')
+  }
+
+  runPipeline (pipeline, callback) {
     // Get all scripts up to the wait.
     let current = []
     let remaining = []
@@ -111,6 +116,11 @@ class Runner {
       }
 
       current.push(pipeline[ii])
+    }
+
+    // Fire callback when nothing to process.
+    if (!current.length && !remaining.length) {
+      return callback && callback()
     }
 
     // Execute all current scripts.
