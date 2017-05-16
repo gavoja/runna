@@ -221,8 +221,9 @@ class Runner {
   }
 
   main () {
-    let args = minimist(process.argv.slice(3))
+    this.init()
 
+    let args = minimist(process.argv.slice(3))
     args.w && this.watch()
     this.runTask(process.argv[2]).then(() => {
       args.w && this.work()
