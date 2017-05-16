@@ -12,70 +12,93 @@ const WAIT = '-'
 const ASNC = '+'
 const INTERVAL = 300
 const PREFIX = chalk.blue('[runna]')
-const RUN = chalk.gray('[run]')
-const END = chalk.gray('[end]')
 const ERR = chalk.red('[err]')
 const LOG = chalk.green('[log]')
 
 class Runner {
   init () {
-    let file = path.join(process.cwd(), 'package.json')
-    this.cfg = JSON.parse(fs.readFileSync(file, 'utf8'))
+    this.cfg = this.getJson(path.join(process.cwd(), 'package.json'))
     this.queue = []
+
+    this.handleExit()
+  }
+
+  getJson (filePath) {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  }
+
+  getArgs (cmd) {
+    let args = cmd.split(' ')
+    let packageName = args[0]
+    let packagePath = path.join(process.cwd(), 'node_modules', packageName)
+    if (!fs.existsSync(packagePath)) {
+      return args
+    }
+
+    let cfg = this.getJson(path.join(packagePath, 'package.json'))
+    if (cfg.bin && Object.keys(cfg.bin).includes(packageName)) {
+      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin[packageName])
+      // TODO: Get current Node.js location.
+      args.unshift('node')
+      return args
+    }
+
+    return args
   }
 
   runScript (name) {
     return new Promise((resolve, reject) => {
       let done
-      console.log(`${PREFIX} ${RUN} ${name}`)
-      let doReject = () => {
-        console.log(`${PREFIX} ${END} ${name}`)
-        done = done || reject()
-      }
+      let timestamp = Date.now()
+      console.log(`${PREFIX} ${LOG} Script started: ${name}`)
 
-      let doResolve = () => {
-        console.log(`${PREFIX} ${END} ${name}`)
-        done = done || resolve()
+      let end = callback => {
+        if (!done) {
+          let duration = Date.now() - timestamp
+          console.log(`${PREFIX} ${LOG} Script ended in ${duration} ms: ${name}`)
+          done = callback()
+        }
       }
 
       // Check if script name exists.
       let cmd = this.cfg.scripts[name]
-
-      // FIXME: Find out why this causes unhandled promise rejection
       if (!cmd) {
+        // FIXME: Find out why this causes unhandled promise rejection
         console.error(`${PREFIX} ${ERR} Script does not exist: ${name}`)
-        return doReject()
+        return end(reject)
       }
 
-      // Fork node processes to enable communication; spawn others.
-      let args = cmd.split(' ')
+      // Get command arguments.
+      let args = this.getArgs(cmd)
+
+      // Spawn child process.
       let child = spawn(args[0], args.slice(1))
 
       // Resolve on proper close.
       child.on('close', code => {
-        code === 0 && doResolve()
+        code === 0 && end(resolve)
       })
 
       // Reject on error.
       child.on('error', err => {
         console.error(err)
-        doReject()
+        end(reject)
       })
 
-      child.stdout.on('data', data => {
-        data.toString('utf8').trim().split('\n').forEach(line => {
-          process.stdout.write(`[${name}] ${line}\n`)
-        })
+      // Capture stdout.
+      child.stdout.on('data', buf => {
+        this.getLogLines(buf, name).forEach(line => process.stdout.write(line))
       })
 
-      child.stderr.on('data', data => {
-        data.toString('utf8').trim().split('\n').forEach(line => {
-          process.stderr.write(`[${name}] ${line}\n`)
-        })
+      // Capture stderr.
+      child.stderr.on('data', buf => {
+        this.getLogLines(buf, name).forEach(line => process.stderr.write(line))
       })
-      // child.stdout.pipe(process.stdout)
-      // child.stderr.pipe(process.stderr)
     })
+  }
+
+  getLogLines (buf, name) {
+    return buf.toString('utf8').replace(/\n$/, '').split('\n').map(line => `${chalk.blue('[' + name + ']')} ${line}\n`)
   }
 
   runTask (name) {
@@ -186,6 +209,15 @@ class Runner {
         this.lock = false
       })
     }
+  }
+
+  handleExit () {
+    let handler = () => {
+      console.log(`${PREFIX} ${LOG} Shutting down.`)
+      process.exit()
+    }
+
+    process.on('SIGINT', handler)
   }
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "runna",
-  "version": "0.1.0",
-  "description": "Runna - npm scripts task runner",
+  "version": "0.2.0",
+  "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
     "type": "git",
@@ -9,6 +9,8 @@
   },
   "keywords": [
     "node",
+    "npm",
+    "process",
     "task",
     "runner"
   ],
@@ -21,13 +23,13 @@
     "simple-watcher": "^3.0.0"
   },
   "scripts": {
-    "build:css": "node tester.js build:css 1000",
-    "build:js": "node tester.js build:js 1200",
-    "build:assets": "node tester.js build:assets 300",
+    "build:css": "node ./test/tester.js build:css 1000",
+    "build:js": "node ./test/tester.js build:js 1200",
+    "build:assets": "./node test/tester.js build:assets 300",
     "server": "node ../runna-webserver/index.js -w test",
     "server:stop": "node ../runna-webserver/index.js -x",
     "server:reload": "node ../runna-webserver/index.js -r",
-    "test": "node tester.js test 2000"
+    "test": "node ./test/tester.js test 2000"
   },
   "runna": {
     "foo": "+server build:css build:js -server:reload",

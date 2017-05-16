@@ -1,0 +1,4 @@
+#!/usr/bin/env node
+const Runner = require('../index')
+let runner = new Runner()
+runner.main()
