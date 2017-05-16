@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -21,6 +21,9 @@
     "micromatch": "^2.3.11",
     "minimist": "^1.2.0",
     "simple-watcher": "^3.0.0"
+  },
+  "bin": {
+    "runna": "./bin/runna"
   },
   "scripts": {
     "build:css": "node ./test/tester.js build:css 1000",
