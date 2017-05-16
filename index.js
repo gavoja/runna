@@ -219,19 +219,20 @@ class Runner {
 
     process.on('SIGINT', handler)
   }
+
+  main () {
+    let args = minimist(process.argv.slice(3))
+
+    args.w && this.watch()
+    this.runTask(process.argv[2]).then(() => {
+      args.w && this.work()
+    })
+  }
 }
 
 if (require.main === module) {
-  let args = minimist(process.argv.slice(3))
-
-  // Initialise runner.
   let runner = new Runner()
-  runner.init()
-
-  args.w && runner.watch()
-  runner.runTask(process.argv[2]).then(() => {
-    args.w && runner.work()
-  })
+  runner.main()
 }
 
 module.exports = Runner
