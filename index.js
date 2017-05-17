@@ -8,26 +8,79 @@ const mm = require('micromatch')
 const path = require('path')
 const watch = require('simple-watcher')
 
+const INTERVAL = 300
 const WAIT = '-'
 const ASNC = '+'
-const INTERVAL = 300
-const PREFIX = chalk.blue('[runna]')
+const RNA = chalk.blue('[runna]')
 const ERR = chalk.red('[err]')
 const LOG = chalk.green('[log]')
+const FLV = '$FLV'
 
 class Runner {
-  init () {
+  init (args) {
+    args = args || {}
     this.cfg = this.getJson(path.join(process.cwd(), 'package.json'))
+    this.flavors = args.flavors ? args.flavors.split(',') : []
     this.queue = []
 
-    this.handleExit()
+    this.getScripts()
+    this.getTasks()
+  }
+
+  applyFlavor (string, flavor) {
+    return string.replace(new RegExp('\\' + FLV, 'g'), flavor)
+  }
+
+  getScripts () {
+    this.scripts = {}
+    Object.keys(this.cfg.scripts).forEach(scriptName => {
+      let script = this.cfg.scripts[scriptName]
+      this.scripts[scriptName] = {}
+
+      // Non flavored scripts.
+      if (!script.includes(FLV) || !this.flavors.length) {
+        this.scripts[scriptName] = {'': this.getSpawnArgs(script)}
+        return
+      }
+
+      // Flavored scripts
+      this.flavors.forEach(flavor => {
+        this.scripts[scriptName][flavor] = this.getSpawnArgs(this.applyFlavor(script, flavor))
+      })
+    })
+  }
+
+  getTasks () {
+    this.tasks = {}
+    Object.keys(this.cfg.runna).forEach(taskName => {
+      let task = this.cfg.runna[taskName]
+      let watch = {}
+      let chain = typeof task === 'string' ? task : task.chain
+      chain = chain.replace(/\s+/, ' ').split(' ')
+
+      // Process watch patterns.
+      task.watch && task.watch.forEach(pattern => {
+        // Non flavored watch.
+        if (!pattern.includes(FLV) || !this.flavors.length) {
+          watch[''] = pattern
+          return
+        }
+
+        // Flavored watch.
+        this.flavors.forEach(flavor => {
+          watch[flavor] = this.applyFlavor(pattern, flavor)
+        })
+      })
+
+      this.tasks[taskName] = {chain, watch}
+    })
   }
 
   getJson (filePath) {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'))
   }
 
-  getArgs (cmd) {
+  getSpawnArgs (cmd) {
     let args = cmd.split(' ')
     let packageName = args[0]
     let packagePath = path.join(process.cwd(), 'node_modules', packageName)
@@ -46,99 +99,101 @@ class Runner {
     return args
   }
 
-  runScript (name) {
+  getLogLines (buf, name) {
+    return buf.toString('utf8').replace(/[\r|\n]+$/, '').split('\n').map(line => `${chalk.blue('[' + name + ']')} ${line}\n`)
+  }
+
+  runScript (scriptName, flavors) {
+    // Check if script exists.
+    let script = this.scripts[scriptName]
+    if (!script) {
+      console.log(`${RNA} ${ERR} Script does not exist: ${scriptName}`)
+      return new Promise((resolve, reject) => resolve())
+    }
+
+    let pipeline = Object.keys(script)
+      .filter(flavor => flavors.includes(flavor) || flavor === '')
+      .map(flavor => this.runScriptFlavor(scriptName, flavor))
+    return Promise.all(pipeline)
+  }
+
+  runScriptFlavor (scriptName, flavor = '') {
     return new Promise((resolve, reject) => {
+      // Prepare.
+      let script = this.scripts[scriptName]
       let done
       let timestamp = Date.now()
-      console.log(`${PREFIX} ${LOG} Script started: ${name}`)
-
+      let fullScriptName = flavor ? `${scriptName}:${flavor}` : scriptName
       let end = callback => {
         if (!done) {
           let duration = Date.now() - timestamp
-          console.log(`${PREFIX} ${LOG} Script ended in ${duration} ms: ${name}`)
-          done = callback()
+          console.log(`${RNA} ${LOG} Script ended in ${duration} ms: ${fullScriptName}`)
+          done = resolve()
         }
       }
 
-      // Check if script name exists.
-      let cmd = this.cfg.scripts[name]
-      if (!cmd) {
-        // FIXME: Find out why this causes unhandled promise rejection
-        console.error(`${PREFIX} ${ERR} Script does not exist: ${name}`)
-        return end(reject)
-      }
-
-      // Get command arguments.
-      let args = this.getArgs(cmd)
-
       // Spawn child process.
-      let child = spawn(args[0], args.slice(1))
+      console.log(`${RNA} ${LOG} Script started: ${fullScriptName}`)
+      let child = spawn(script[flavor][0], script[flavor].slice(1))
 
       // Resolve on proper close.
       child.on('close', code => {
-        code === 0 && end(resolve)
+        code === 0 && end()
       })
 
       // Reject on error.
       child.on('error', err => {
         console.error(err)
-        end(reject)
+        end()
       })
 
       // Capture stdout.
       child.stdout.on('data', buf => {
-        this.getLogLines(buf, name).forEach(line => process.stdout.write(line))
+        this.getLogLines(buf, fullScriptName).forEach(line => process.stdout.write(line))
       })
 
       // Capture stderr.
       child.stderr.on('data', buf => {
-        this.getLogLines(buf, name).forEach(line => process.stderr.write(line))
+        this.getLogLines(buf, fullScriptName).forEach(line => process.stderr.write(line))
       })
     })
   }
 
-  getLogLines (buf, name) {
-    return buf.toString('utf8').replace(/\n$/, '').split('\n').map(line => `${chalk.blue('[' + name + ']')} ${line}\n`)
-  }
-
-  runTask (name) {
+  runTask (taskName, flavors) {
+    flavors = flavors || this.flavors
     return new Promise((resolve, reject) => {
-      console.log(`${PREFIX} ${LOG} Running task: ${name}`)
-      let pipeline = this.getPipeline(name)
-      this.runPipeline(pipeline, () => resolve())
+      // Get the chain.
+      let task = this.tasks[taskName]
+      if (!task) {
+        console.error(`${RNA} ${ERR} Task does not exist: ${taskName}`)
+        return resolve()
+      }
+
+      // Run chain.
+      console.log(`${RNA} ${LOG} Running task: ${taskName}`)
+      this.runChain(task.chain, flavors, () => resolve())
     })
   }
 
-  getPipeline (name) {
-    let task = this.cfg.runna[name]
-    if (!task) {
-      console.error(`${PREFIX} ${ERR} Task does not exist: ${name}`)
-      return []
-    }
-
-    task = typeof task === 'string' ? task : task.chain
-    return task.replace(/\s+/g, ' ').split(' ')
-  }
-
-  runPipeline (pipeline, callback) {
+  runChain (chain, flavors, callback) {
     // Get all scripts up to the wait.
     let current = []
     let remaining = []
-    for (let ii = 0; ii < pipeline.length; ++ii) {
+    for (let ii = 0; ii < chain.length; ++ii) {
       // Run async scripts.
-      if (pipeline[ii].startsWith(ASNC)) {
-        this.runScript(pipeline[ii].substr(1))
+      if (chain[ii].startsWith(ASNC)) {
+        this.runScript(chain[ii].substr(1), flavors)
         continue
       }
 
       // Stop at wait scripts.
-      if (pipeline[ii].startsWith(WAIT)) {
-        pipeline[ii] = pipeline[ii].substr(1)
-        remaining = pipeline.slice(ii)
+      if (chain[ii].startsWith(WAIT)) {
+        chain[ii] = chain[ii].substr(1)
+        remaining = chain.slice(ii)
         break
       }
 
-      current.push(pipeline[ii])
+      current.push(chain[ii])
     }
 
     // Fire callback when nothing to process.
@@ -148,10 +203,10 @@ class Runner {
 
     // Execute all current scripts.
     current.length && Promise
-      .all(current.map(script => this.runScript(script)))
+      .all(current.map(script => this.runScript(script, flavors)))
       .then(() => {
         // Execute all remaining when current end.
-        this.runPipeline(remaining, callback)
+        this.runChain(remaining, flavors, callback)
       })
   }
 
@@ -160,7 +215,7 @@ class Runner {
   }
 
   work () {
-    console.log(`${PREFIX} ${LOG} Watching for changes ...`)
+    console.log(`${RNA} ${LOG} Watching for changes ...`)
     if (!this.worker) {
       this.worker = setInterval(this.processQueue.bind(this), INTERVAL)
     }
@@ -191,16 +246,15 @@ class Runner {
 
     // Get the pipeline.
     let pipeline = []
-    Object.keys(this.cfg.runna).forEach(taskName => {
-      let task = this.cfg.runna[taskName]
-      if (!task.watch) {
-        return
-      }
-
-      let match = mm(paths, task.watch)
-      if (match.length > 0) {
-        pipeline.push(this.runTask(taskName))
-      }
+    Object.keys(this.tasks).forEach(taskName => {
+      let task = this.tasks[taskName]
+      Object.keys(task.watch).forEach(flavor => {
+        let pattern = task.watch[flavor]
+        let match = mm(paths, pattern)
+        if (match.length > 0) {
+          pipeline.push(this.runTask(taskName, flavor))
+        }
+      })
     })
 
     if (pipeline.length > 0) {
@@ -213,7 +267,7 @@ class Runner {
 
   handleExit () {
     let handler = () => {
-      console.log(`${PREFIX} ${LOG} Shutting down.`)
+      console.log(`${RNA} ${LOG} Shutting down.`)
       process.exit()
     }
 
@@ -221,9 +275,9 @@ class Runner {
   }
 
   main () {
-    this.init()
-
     let args = minimist(process.argv.slice(3))
+    this.init({flavors: args.f})
+
     args.w && this.watch()
     this.runTask(process.argv[2]).then(() => {
       args.w && this.work()

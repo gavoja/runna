@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -16,46 +16,57 @@
   ],
   "author": "Michal Kochel",
   "license": "MIT",
+  "bin": {
+    "runna": "./bin/runna"
+  },
   "dependencies": {
     "chalk": "^1.1.3",
     "micromatch": "^2.3.11",
     "minimist": "^1.2.0",
     "simple-watcher": "^3.0.0"
   },
-  "bin": {
-    "runna": "./bin/runna"
+  "devDependencies": {
+    "runna-webserver": "^0.1.1"
   },
   "scripts": {
-    "build:css": "node ./test/tester.js build:css 1000",
-    "build:js": "node ./test/tester.js build:js 1200",
-    "build:assets": "./node test/tester.js build:assets 300",
-    "server": "node ../runna-webserver/index.js -w test",
-    "server:stop": "node ../runna-webserver/index.js -x",
-    "server:reload": "node ../runna-webserver/index.js -r",
-    "test": "node ./test/tester.js test 2000"
+    "build:css": "node ./test/tester.js build:css:$FLV 1000",
+    "build:js": "node ./test/tester.js build:js:$FLV 1200",
+    "build:html": "node ./test/tester.js build:html 100",
+    "copy:assets": "node test/tester.js copy:assets:$FLV 300",
+    "server": "runna-webserver -w test",
+    "server:stop": "runna-webserver -x",
+    "server:reload": "runna-webserver -r",
+    "test": "node ./test/tester.js test 2000",
+    "watch": "node index.js watch -f proj1,proj2"
   },
   "runna": {
-    "foo": "+server build:css build:js -server:reload",
-    "bar": "+server",
-    "baz": "build:js",
-    "develop": "+server build:css build:js copy:assets -server:reload",
+    "foo": "+server",
+    "watch": "+server build:html build:css build:js copy:assets -server:reload",
+    "build": "build:css:dist build:js:dist copy:assets -foo",
     "test": "+server build.css.dist build:js:test copy:assets -test -server:stop",
-    "dist": "build:css:dist build:js:dist copy:assets -foo",
     "build:js": {
       "chain": "build:js -server:reload",
-      "watch": ["test/js/**/*.js"]
+      "watch": [
+        "test/$FLV/js/**/*.js"
+      ]
     },
     "build:css": {
       "chain": "build:css -server:reload",
-      "watch": ["test/css/**/*.styl"]
+      "watch": [
+        "test/$FLV/css/**/*.styl"
+      ]
     },
-    "build:assets": {
-      "chain": "build:assets -server:reload",
-      "watch": ["test/static/**/*"]
+    "copy:assets": {
+      "chain": "copy:assets -server:reload",
+      "watch": [
+        "test/$FLV/static/**/*"
+      ]
     },
     "build:html": {
-      "chain": "server:reload",
-      "watch": ["test/**/*.html"]
+      "chain": "build:html server:reload",
+      "watch": [
+        "test/**/*.html"
+      ]
     }
   }
 }
