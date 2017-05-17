@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -30,7 +30,7 @@
   },
   "scripts": {
     "build:css": "node ./test/tester.js build:css:$FLV 1000",
-    "build:js": "node ./test/tester.js build:js:$FLV 1200",
+    "build:js": "node ./test/tester.js build:js:$FLV 1500",
     "build:html": "node ./test/tester.js build:html 100",
     "copy:assets": "node test/tester.js copy:assets:$FLV 300",
     "server": "runna-webserver -w test",
@@ -40,13 +40,14 @@
     "watch": "node index.js watch -f proj1,proj2"
   },
   "runna": {
-    "foo": "+server",
+    "foo": "+server build:js -server:reload",
     "watch": "+server build:html build:css build:js copy:assets -server:reload",
     "build": "build:css:dist build:js:dist copy:assets -foo",
     "test": "+server build.css.dist build:js:test copy:assets -test -server:stop",
     "build:js": {
       "chain": "build:js -server:reload",
       "watch": [
+        "test/base/js/**/*.js",
         "test/$FLV/js/**/*.js"
       ]
     },
@@ -63,7 +64,7 @@
       ]
     },
     "build:html": {
-      "chain": "build:html server:reload",
+      "chain": "build:html -server:reload",
       "watch": [
         "test/**/*.html"
       ]

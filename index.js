@@ -20,11 +20,14 @@ class Runner {
   init (args) {
     args = args || {}
     this.cfg = this.getJson(path.join(process.cwd(), 'package.json'))
-    this.flavors = args.flavors ? args.flavors.split(',') : []
+    this.flavors = typeof args.flavors === 'string' ? args.flavors.split(',') : []
     this.queue = []
 
     this.getScripts()
     this.getTasks()
+
+    // console.log(JSON.stringify(this.tasks, null, 2))
+    // process.exit()
   }
 
   applyFlavor (string, flavor) {
@@ -35,17 +38,17 @@ class Runner {
     this.scripts = {}
     Object.keys(this.cfg.scripts).forEach(scriptName => {
       let script = this.cfg.scripts[scriptName]
-      this.scripts[scriptName] = {}
+      this.scripts[scriptName] = []
 
       // Non flavored scripts.
       if (!script.includes(FLV) || !this.flavors.length) {
-        this.scripts[scriptName] = {'': this.getSpawnArgs(script)}
-        return
+        return this.scripts[scriptName].push({args: this.getSpawnArgs(script)})
       }
 
       // Flavored scripts
       this.flavors.forEach(flavor => {
-        this.scripts[scriptName][flavor] = this.getSpawnArgs(this.applyFlavor(script, flavor))
+        let args = this.getSpawnArgs(this.applyFlavor(script, flavor))
+        this.scripts[scriptName].push({args, flavor})
       })
     })
   }
@@ -54,7 +57,7 @@ class Runner {
     this.tasks = {}
     Object.keys(this.cfg.runna).forEach(taskName => {
       let task = this.cfg.runna[taskName]
-      let watch = {}
+      let watch = []
       let chain = typeof task === 'string' ? task : task.chain
       chain = chain.replace(/\s+/, ' ').split(' ')
 
@@ -62,13 +65,12 @@ class Runner {
       task.watch && task.watch.forEach(pattern => {
         // Non flavored watch.
         if (!pattern.includes(FLV) || !this.flavors.length) {
-          watch[''] = pattern
-          return
+          return watch.push({pattern})
         }
 
         // Flavored watch.
         this.flavors.forEach(flavor => {
-          watch[flavor] = this.applyFlavor(pattern, flavor)
+          watch.push({pattern: this.applyFlavor(pattern, flavor), flavor})
         })
       })
 
@@ -111,30 +113,33 @@ class Runner {
       return new Promise((resolve, reject) => resolve())
     }
 
-    let pipeline = Object.keys(script)
-      .filter(flavor => flavors.includes(flavor) || flavor === '')
-      .map(flavor => this.runScriptFlavor(scriptName, flavor))
+    let pipeline = []
+    script.forEach(s => {
+      if (!s.flavor || flavors.includes(s.flavor)) {
+        let name = s.flavor ? `${scriptName}:${s.flavor}` : scriptName
+        pipeline.push(this.runArgs(s.args, name))
+      }
+    })
+
     return Promise.all(pipeline)
   }
 
-  runScriptFlavor (scriptName, flavor = '') {
+  runArgs (args, name) {
     return new Promise((resolve, reject) => {
       // Prepare.
-      let script = this.scripts[scriptName]
       let done
       let timestamp = Date.now()
-      let fullScriptName = flavor ? `${scriptName}:${flavor}` : scriptName
       let end = callback => {
         if (!done) {
           let duration = Date.now() - timestamp
-          console.log(`${RNA} ${LOG} Script ended in ${duration} ms: ${fullScriptName}`)
+          console.log(`${RNA} ${LOG} Script ended in ${duration} ms: ${name}`)
           done = resolve()
         }
       }
 
       // Spawn child process.
-      console.log(`${RNA} ${LOG} Script started: ${fullScriptName}`)
-      let child = spawn(script[flavor][0], script[flavor].slice(1))
+      console.log(`${RNA} ${LOG} Script started: ${name}`)
+      let child = spawn(args[0], args.slice(1))
 
       // Resolve on proper close.
       child.on('close', code => {
@@ -149,12 +154,12 @@ class Runner {
 
       // Capture stdout.
       child.stdout.on('data', buf => {
-        this.getLogLines(buf, fullScriptName).forEach(line => process.stdout.write(line))
+        this.getLogLines(buf, name).forEach(line => process.stdout.write(line))
       })
 
       // Capture stderr.
       child.stderr.on('data', buf => {
-        this.getLogLines(buf, fullScriptName).forEach(line => process.stderr.write(line))
+        this.getLogLines(buf, name).forEach(line => process.stderr.write(line))
       })
     })
   }
@@ -188,8 +193,8 @@ class Runner {
 
       // Stop at wait scripts.
       if (chain[ii].startsWith(WAIT)) {
-        chain[ii] = chain[ii].substr(1)
         remaining = chain.slice(ii)
+        remaining[0] = remaining[0].substr(1)
         break
       }
 
@@ -222,9 +227,7 @@ class Runner {
   }
 
   processQueue () {
-    // Wait for the previous package to install.
-    // Otherwise an error may occur if two concurrent packages try to make
-    // changes to the same node.
+    // Wait for the previous task to complete to avoid concurrency conflicts.
     if (this.lock) {
       return
     }
@@ -244,21 +247,44 @@ class Runner {
       return // Skip if no unique paths.
     }
 
+    this.processPaths(paths)
+  }
+
+  processPaths (paths) {
     // Get the pipeline.
     let pipeline = []
     Object.keys(this.tasks).forEach(taskName => {
       let task = this.tasks[taskName]
-      Object.keys(task.watch).forEach(flavor => {
-        let pattern = task.watch[flavor]
-        let match = mm(paths, pattern)
-        if (match.length > 0) {
-          pipeline.push(this.runTask(taskName, flavor))
+
+      // Get the flavors that match the pattern.
+      let flavors = new Set()
+      task.watch.some(w => {
+        let match = mm(paths, w.pattern)
+
+        // Continue if no match.
+        if (match.length === 0) {
+          return
         }
+
+        // Add all flavors if generic.
+        if (!w.flavor) {
+          flavors = new Set(this.flavors)
+          return true
+        }
+
+        // Add matched flavor.
+        flavors.add(w.flavor)
       })
+
+      // Add task to pipeline.
+      if (flavors.size > 0) {
+        this.lock = true
+        pipeline.push(this.runTask(taskName, [...flavors]))
+      }
     })
 
+    // Wait for the pipeline to process and unlock.
     if (pipeline.length > 0) {
-      this.lock = true
       Promise.all(pipeline).then(() => {
         this.lock = false
       })
