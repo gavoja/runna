@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "0.3.1",
+  "version": "1.0.0",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -37,37 +37,12 @@
     "server:stop": "runna-webserver -x",
     "server:reload": "runna-webserver -r",
     "test": "node ./test/tester.js test 2000",
-    "watch": "node index.js watch -f proj1,proj2"
+    "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -f proj1,proj2 -w"
   },
-  "runna": {
-    "foo": "+server build:js -server:reload",
-    "watch": "+server build:html build:css build:js copy:assets -server:reload",
-    "build": "build:css:dist build:js:dist copy:assets -foo",
-    "test": "+server build.css.dist build:js:test copy:assets -test -server:stop",
-    "build:js": {
-      "chain": "build:js -server:reload",
-      "watch": [
-        "test/base/js/**/*.js",
-        "test/$FLV/js/**/*.js"
-      ]
-    },
-    "build:css": {
-      "chain": "build:css -server:reload",
-      "watch": [
-        "test/$FLV/css/**/*.styl"
-      ]
-    },
-    "copy:assets": {
-      "chain": "copy:assets -server:reload",
-      "watch": [
-        "test/$FLV/static/**/*"
-      ]
-    },
-    "build:html": {
-      "chain": "build:html -server:reload",
-      "watch": [
-        "test/**/*.html"
-      ]
-    }
+  "observe": {
+    "build:js -server:reload": ["test/base/js/**/*.js", "test/$FLV/js/**/*.js"],
+    "build:css -server:reload": ["test/$FLV/css/**/*.styl"],
+    "copy:assets -server:reload": ["test/$FLV/static/**/*"],
+    "build:html -server:reload": ["test/**/*.html"]
   }
 }

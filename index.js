@@ -24,9 +24,8 @@ class Runner {
     this.queue = []
 
     this.getScripts()
-    this.getTasks()
-
-    // console.log(JSON.stringify(this.tasks, null, 2))
+    this.getObserve()
+    // console.log(JSON.stringify(this.scripts, null, 2))
     // process.exit()
   }
 
@@ -38,6 +37,9 @@ class Runner {
     this.scripts = {}
     Object.keys(this.cfg.scripts).forEach(scriptName => {
       let script = this.cfg.scripts[scriptName]
+      if (!script.trim()) {
+        return console.log(`${RNA} ${ERR} Script is empty: ${scriptName}`)
+      }
       this.scripts[scriptName] = []
 
       // Non flavored scripts.
@@ -47,34 +49,27 @@ class Runner {
 
       // Flavored scripts
       this.flavors.forEach(flavor => {
-        let args = this.getSpawnArgs(this.applyFlavor(script, flavor))
+        const args = this.getSpawnArgs(this.applyFlavor(script, flavor))
         this.scripts[scriptName].push({args, flavor})
       })
     })
   }
 
-  getTasks () {
-    this.tasks = {}
-    Object.keys(this.cfg.runna).forEach(taskName => {
-      let task = this.cfg.runna[taskName]
-      let watch = []
-      let chain = typeof task === 'string' ? task : task.chain
-      chain = chain.replace(/\s+/, ' ').split(' ')
-
-      // Process watch patterns.
-      task.watch && task.watch.forEach(pattern => {
-        // Non flavored watch.
+  getObserve () {
+    this.observe = {}
+    Object.keys(this.cfg.observe).forEach(chain => {
+      this.observe[chain] = []
+      this.cfg.observe[chain].forEach(pattern => {
+        // Non flavored observe.
         if (!pattern.includes(FLV) || !this.flavors.length) {
-          return watch.push({pattern})
+          return this.observe[chain].push(pattern)
         }
 
-        // Flavored watch.
+        // Flavored observe.
         this.flavors.forEach(flavor => {
-          watch.push({pattern: this.applyFlavor(pattern, flavor), flavor})
+          this.observe[chain].push({pattern: this.applyFlavor(pattern, flavor), flavor})
         })
       })
-
-      this.tasks[taskName] = {chain, watch}
     })
   }
 
@@ -101,8 +96,8 @@ class Runner {
     return args
   }
 
-  getLogLines (buf, name) {
-    return buf.toString('utf8').replace(/[\r|\n]+$/, '').split('\n').map(line => `${chalk.blue('[' + name + ']')} ${line}\n`)
+  getLogLines (buf, name, log) {
+    return buf.toString('utf8').replace(/[\r|\n]+$/, '').split('\n').map(line => `${chalk.blue('[' + name + ']')} ${log} ${line}\n`)
   }
 
   runScript (scriptName, flavors) {
@@ -154,65 +149,50 @@ class Runner {
 
       // Capture stdout.
       child.stdout.on('data', buf => {
-        this.getLogLines(buf, name).forEach(line => process.stdout.write(line))
+        this.getLogLines(buf, name, LOG).forEach(line => process.stdout.write(line))
       })
 
-      // Capture stderr.
+      // // Capture stderr.
       child.stderr.on('data', buf => {
-        this.getLogLines(buf, name).forEach(line => process.stderr.write(line))
+        this.getLogLines(buf, name, ERR).forEach(line => process.stderr.write(line))
       })
     })
   }
 
-  runTask (taskName, flavors) {
+  runChain (chain, flavors) {
     flavors = flavors || this.flavors
     return new Promise((resolve, reject) => {
-      // Get the chain.
-      let task = this.tasks[taskName]
-      if (!task) {
-        console.error(`${RNA} ${ERR} Task does not exist: ${taskName}`)
+      // Get all scripts up to the wait.
+      let current = []
+      let remaining = []
+      for (let ii = 0; ii < chain.length; ++ii) {
+        // Run async scripts.
+        if (chain[ii].startsWith(ASNC)) {
+          this.runScript(chain[ii].substr(1), flavors)
+          continue
+        }
+
+        // Stop at wait scripts.
+        if (chain[ii].startsWith(WAIT)) {
+          remaining = chain.slice(ii)
+          remaining[0] = remaining[0].substr(1)
+          break
+        }
+
+        current.push(chain[ii])
+      }
+
+      // Fire callback when nothing to process.
+      if (!current.length && !remaining.length) {
         return resolve()
       }
 
-      // Run chain.
-      console.log(`${RNA} ${LOG} Running task: ${taskName}`)
-      this.runChain(task.chain, flavors, () => resolve())
+      // Execute all current scripts.
+      current.length && Promise
+        .all(current.map(script => this.runScript(script, flavors)))
+        .then(() => this.runChain(remaining, flavors))
+        .then(() => resolve())
     })
-  }
-
-  runChain (chain, flavors, callback) {
-    // Get all scripts up to the wait.
-    let current = []
-    let remaining = []
-    for (let ii = 0; ii < chain.length; ++ii) {
-      // Run async scripts.
-      if (chain[ii].startsWith(ASNC)) {
-        this.runScript(chain[ii].substr(1), flavors)
-        continue
-      }
-
-      // Stop at wait scripts.
-      if (chain[ii].startsWith(WAIT)) {
-        remaining = chain.slice(ii)
-        remaining[0] = remaining[0].substr(1)
-        break
-      }
-
-      current.push(chain[ii])
-    }
-
-    // Fire callback when nothing to process.
-    if (!current.length && !remaining.length) {
-      return callback && callback()
-    }
-
-    // Execute all current scripts.
-    current.length && Promise
-      .all(current.map(script => this.runScript(script, flavors)))
-      .then(() => {
-        // Execute all remaining when current end.
-        this.runChain(remaining, flavors, callback)
-      })
   }
 
   watch () {
@@ -253,12 +233,10 @@ class Runner {
   processPaths (paths) {
     // Get the pipeline.
     let pipeline = []
-    Object.keys(this.tasks).forEach(taskName => {
-      let task = this.tasks[taskName]
-
+    Object.keys(this.observe).forEach(chain => {
       // Get the flavors that match the pattern.
       let flavors = new Set()
-      task.watch.some(w => {
+      this.observe[chain].some(w => {
         let match = mm(paths, w.pattern)
 
         // Continue if no match.
@@ -279,7 +257,7 @@ class Runner {
       // Add task to pipeline.
       if (flavors.size > 0) {
         this.lock = true
-        pipeline.push(this.runTask(taskName, [...flavors]))
+        pipeline.push(this.runChain(chain.split(' '), [...flavors]))
       }
     })
 
@@ -301,11 +279,12 @@ class Runner {
   }
 
   main () {
-    let args = minimist(process.argv.slice(3))
-    this.init({flavors: args.f})
+    const chain = process.argv[2].split(' ')
+    const args = minimist(process.argv.slice(3))
 
+    this.init({flavors: args.f})
     args.w && this.watch()
-    this.runTask(process.argv[2]).then(() => {
+    this.runChain(chain).then(() => {
       args.w && this.work()
     })
   }
