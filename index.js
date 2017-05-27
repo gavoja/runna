@@ -124,7 +124,7 @@ class Runner {
       // Prepare.
       let done
       let timestamp = Date.now()
-      let end = callback => {
+      let end = () => {
         if (!done) {
           let duration = Date.now() - timestamp
           console.log(`${RNA} ${LOG} Script ended in ${duration} ms: ${name}`)
@@ -137,8 +137,8 @@ class Runner {
       let child = spawn(args[0], args.slice(1))
 
       // Resolve on proper close.
-      child.on('close', code => {
-        code === 0 && end()
+      child.on('close', () => {
+        end()
       })
 
       // Reject on error.
