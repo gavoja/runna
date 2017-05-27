@@ -25,7 +25,7 @@ class Runner {
 
     this.getScripts()
     this.getObserve()
-    // console.log(JSON.stringify(this.scripts, null, 2))
+    // console.log(JSON.stringify(this.observe, null, 2))
     // process.exit()
   }
 
@@ -62,7 +62,7 @@ class Runner {
       this.cfg.observe[chain].forEach(pattern => {
         // Non flavored observe.
         if (!pattern.includes(FLV) || !this.flavors.length) {
-          return this.observe[chain].push(pattern)
+          return this.observe[chain].push({pattern})
         }
 
         // Flavored observe.
@@ -279,6 +279,8 @@ class Runner {
   }
 
   main () {
+    this.handleExit()
+
     const chain = process.argv[2].split(' ')
     const args = minimist(process.argv.slice(3))
 
