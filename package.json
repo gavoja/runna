@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -37,7 +37,7 @@
     "server:stop": "runna-webserver -x",
     "server:reload": "runna-webserver -r",
     "test": "node ./test/tester.js test 2000",
-    "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -f proj1,proj2 -w"
+    "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -w -f"
   },
   "observe": {
     "build:js -server:reload": ["test/base/js/**/*.js", "test/$FLV/js/**/*.js"],

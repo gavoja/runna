@@ -284,6 +284,10 @@ class Runner {
     const chain = process.argv[2].split(' ')
     const args = minimist(process.argv.slice(3))
 
+    if (typeof args.f !== 'string') {
+      return console.error(`${RNA} ${ERR} No flavors specified.`)
+    }
+
     this.init({flavors: args.f})
     args.w && this.watch()
     this.runChain(chain).then(() => {
