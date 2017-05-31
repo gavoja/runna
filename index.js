@@ -284,7 +284,7 @@ class Runner {
     const chain = process.argv[2].split(' ')
     const args = minimist(process.argv.slice(3))
 
-    if (typeof args.f !== 'string') {
+    if (args.f && typeof args.f !== 'string') {
       return console.error(`${RNA} ${ERR} No flavors specified.`)
     }
 
