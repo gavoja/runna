@@ -97,7 +97,8 @@ class Runner {
   }
 
   getLogLines (buf, name, log) {
-    return buf.toString('utf8').trim().split('\n').map(line => `${chalk.blue('[' + name + ']')} ${log} ${line}\n`)
+    let trimmed = buf.toString('utf8').trim()
+    return trimmed ? trimmed.split('\n').map(line => `${chalk.blue('[' + name + ']')} ${log} ${line}\n`) : []
   }
 
   runScript (scriptName, flavors) {
