@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {

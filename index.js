@@ -19,58 +19,176 @@ const FLV = '$FLV'
 class Runner {
   init (args) {
     args = args || {}
-    this.cfg = this.getJson(path.join(process.cwd(), 'package.json'))
-    this.flavors = typeof args.flavors === 'string' ? args.flavors.split(',') : []
+    this.cfg = this.getCfg()
+    this.flavors = this.getFlavors(this.cfg, args.flavors)
+    this.scripts = this.getScripts(this.cfg, this.flavors)
+    this.observe = this.getObserve(this.cfg, this.flavors)
     this.queue = []
 
-    this.getScripts()
-    this.getObserve()
     // console.log(JSON.stringify(this.observe, null, 2))
-    // process.exit()
+  }
+
+  main () {
+    this.handleExit()
+
+    const chain = process.argv[2].split(' ')
+    const args = minimist(process.argv.slice(3))
+
+    this.init({flavors: args.f === true ? '' : args.f})
+    args.w && this.watch()
+    this.runChain(chain, this.scripts, this.flavors).then(() => {
+      args.w && this.work()
+    })
+  }
+
+  watch () {
+    watch(process.cwd(), localPath => this.queue.push(localPath))
+  }
+
+  work () {
+    console.log(`${RNA} ${LOG} Watching for changes ...`)
+    if (!this.worker) {
+      this.worker = setInterval(this.processQueue.bind(this), INTERVAL)
+    }
+  }
+
+  processQueue () {
+    // Wait for the previous task to complete to avoid concurrency conflicts.
+    if (this.lock) {
+      return
+    }
+
+    // Get unique list of local paths.
+    let dict = {}
+    while (this.queue.length > 0) {
+      dict[this.queue.pop()] = true
+    }
+
+    // Get all the items.
+    let paths = Object.keys(dict).map(localPath => {
+      return localPath.replace(/\\/g, '/').substr(process.cwd().length + 1)
+    })
+
+    if (paths.length === 0) {
+      return // Skip if no unique paths.
+    }
+
+    this.processPaths(paths)
+  }
+
+  processPaths (paths) {
+    // Get the pipeline.
+    const pipeline = []
+    Object.keys(this.observe).forEach(chain => {
+      // Get the flavors that match the pattern.
+      let flavors = new Set()
+      const doRunChain = this.observe[chain].some(w => {
+        const match = mm(paths, w.pattern)
+
+        // Continue if no match.
+        if (match.length === 0) {
+          return false
+        }
+
+        if (w.flavor) {
+          // Add matched flavor.
+          this.addFlavor(this.cfg, flavors, w.flavor)
+          // flavors.add(w.flavor)
+        } else {
+          // Add all flavors if generic.
+          flavors = new Set(this.flavors)
+        }
+
+        return true
+      })
+
+      // Add task to pipeline.
+      if (doRunChain) {
+        this.lock = true
+        pipeline.push(this.runChain(chain.split(' '), this.scripts, [...flavors]))
+      }
+    })
+
+    // Wait for the pipeline to process and unlock.
+    if (pipeline.length > 0) {
+      Promise.all(pipeline).then(() => {
+        this.lock = false
+      })
+    }
+  }
+
+  //
+  // No side effects.
+  //
+
+  getCfg () {
+    const cfg = this.getJson(path.join(process.cwd(), 'package.json'))
+    cfg.flavors = cfg.flavors || {}
+    return cfg
+  }
+
+  addFlavor (cfg, flavors, flavor) {
+    flavors.add(flavor)
+    cfg.flavors[flavor] && cfg.flavors[flavor].forEach(f => flavors.add(f))
+  }
+
+  getFlavors (cfg, farg) {
+    let flavors = []
+    if (typeof farg === 'string') {
+      flavors = farg ? farg.split(',') : Object.keys(cfg.flavors)
+    }
+
+    console.log(`${RNA} ${LOG} With flavors: ${flavors.join(', ')}`)
+    return flavors
   }
 
   applyFlavor (string, flavor) {
     return string.replace(new RegExp('\\' + FLV, 'g'), flavor)
   }
 
-  getScripts () {
-    this.scripts = {}
-    Object.keys(this.cfg.scripts).forEach(scriptName => {
-      let script = this.cfg.scripts[scriptName]
+  getScripts (cfg, flavors) {
+    const scripts = {}
+    Object.keys(cfg.scripts).forEach(scriptName => {
+      let script = cfg.scripts[scriptName]
       if (!script.trim()) {
         return console.log(`${RNA} ${ERR} Script is empty: ${scriptName}`)
       }
-      this.scripts[scriptName] = []
+
+      scripts[scriptName] = []
 
       // Non flavored scripts.
-      if (!script.includes(FLV) || !this.flavors.length) {
-        return this.scripts[scriptName].push({args: this.getSpawnArgs(script)})
+      if (!script.includes(FLV) || !flavors.length) {
+        return scripts[scriptName].push({args: this.getSpawnArgs(script)})
       }
 
       // Flavored scripts
-      this.flavors.forEach(flavor => {
+      flavors.forEach(flavor => {
         const args = this.getSpawnArgs(this.applyFlavor(script, flavor))
-        this.scripts[scriptName].push({args, flavor})
+        scripts[scriptName].push({args, flavor})
       })
     })
+
+    return scripts
   }
 
-  getObserve () {
-    this.observe = {}
-    Object.keys(this.cfg.observe).forEach(chain => {
-      this.observe[chain] = []
-      this.cfg.observe[chain].forEach(pattern => {
+  getObserve (cfg, flavors) {
+    const observe = {}
+    Object.keys(cfg.observe).forEach(chain => {
+      observe[chain] = []
+      cfg.observe[chain].forEach(pattern => {
         // Non flavored observe.
-        if (!pattern.includes(FLV) || !this.flavors.length) {
-          return this.observe[chain].push({pattern})
+        if (!pattern.includes(FLV) || !flavors.length) {
+          return observe[chain].push({pattern})
         }
 
         // Flavored observe.
-        this.flavors.forEach(flavor => {
-          this.observe[chain].push({pattern: this.applyFlavor(pattern, flavor), flavor})
+        flavors.forEach(flavor => {
+          observe[chain].push({pattern: this.applyFlavor(pattern, flavor), flavor})
         })
       })
     })
+
+    return observe
   }
 
   getJson (filePath) {
@@ -101,9 +219,9 @@ class Runner {
     return trimmed ? trimmed.split('\n').map(line => `${chalk.blue('[' + name + ']')} ${log} ${line}\n`) : []
   }
 
-  runScript (scriptName, flavors) {
+  runScript (scriptName, scripts, flavors) {
     // Check if script exists.
-    let script = this.scripts[scriptName]
+    let script = scripts[scriptName]
     if (!script) {
       console.log(`${RNA} ${ERR} Script does not exist: ${scriptName}`)
       return new Promise((resolve, reject) => resolve())
@@ -160,8 +278,7 @@ class Runner {
     })
   }
 
-  runChain (chain, flavors) {
-    flavors = flavors || this.flavors
+  runChain (chain, scripts, flavors) {
     return new Promise((resolve, reject) => {
       // Get all scripts up to the wait.
       let current = []
@@ -169,7 +286,7 @@ class Runner {
       for (let ii = 0; ii < chain.length; ++ii) {
         // Run async scripts.
         if (chain[ii].startsWith(ASNC)) {
-          this.runScript(chain[ii].substr(1), flavors)
+          this.runScript(chain[ii].substr(1), scripts, flavors)
           continue
         }
 
@@ -190,115 +307,24 @@ class Runner {
 
       // Execute all current scripts.
       current.length && Promise
-        .all(current.map(script => this.runScript(script, flavors)))
-        .then(() => this.runChain(remaining, flavors))
+        .all(current.map(script => this.runScript(script, scripts, flavors)))
+        .then(() => this.runChain(remaining, scripts, flavors))
         .then(() => resolve())
     })
   }
 
-  watch () {
-    watch(process.cwd(), localPath => this.queue.push(localPath))
-  }
-
-  work () {
-    console.log(`${RNA} ${LOG} Watching for changes ...`)
-    if (!this.worker) {
-      this.worker = setInterval(this.processQueue.bind(this), INTERVAL)
-    }
-  }
-
-  processQueue () {
-    // Wait for the previous task to complete to avoid concurrency conflicts.
-    if (this.lock) {
-      return
-    }
-
-    // Get unique list of local paths.
-    let dict = {}
-    while (this.queue.length > 0) {
-      dict[this.queue.pop()] = true
-    }
-
-    // Get all the items.
-    let paths = Object.keys(dict).map(localPath => {
-      return localPath.replace(/\\/g, '/').substr(process.cwd().length + 1)
-    })
-
-    if (paths.length === 0) {
-      return // Skip if no unique paths.
-    }
-
-    this.processPaths(paths)
-  }
-
-  processPaths (paths) {
-    // Get the pipeline.
-    let pipeline = []
-    Object.keys(this.observe).forEach(chain => {
-      // Get the flavors that match the pattern.
-      let flavors = new Set()
-      this.observe[chain].some(w => {
-        let match = mm(paths, w.pattern)
-
-        // Continue if no match.
-        if (match.length === 0) {
-          return
-        }
-
-        // Add all flavors if generic.
-        if (!w.flavor) {
-          flavors = new Set(this.flavors)
-          return true
-        }
-
-        // Add matched flavor.
-        flavors.add(w.flavor)
-      })
-
-      // Add task to pipeline.
-      if (flavors.size > 0) {
-        this.lock = true
-        pipeline.push(this.runChain(chain.split(' '), [...flavors]))
-      }
-    })
-
-    // Wait for the pipeline to process and unlock.
-    if (pipeline.length > 0) {
-      Promise.all(pipeline).then(() => {
-        this.lock = false
-      })
-    }
-  }
-
   handleExit () {
-    let handler = () => {
+    const handler = () => {
       console.log(`${RNA} ${LOG} Shutting down.`)
       process.exit()
     }
 
     process.on('SIGINT', handler)
   }
-
-  main () {
-    this.handleExit()
-
-    const chain = process.argv[2].split(' ')
-    const args = minimist(process.argv.slice(3))
-
-    if (args.f && typeof args.f !== 'string') {
-      return console.error(`${RNA} ${ERR} No flavors specified.`)
-    }
-
-    this.init({flavors: args.f})
-    args.w && this.watch()
-    this.runChain(chain).then(() => {
-      args.w && this.work()
-    })
-  }
 }
 
 if (require.main === module) {
-  let runner = new Runner()
+  const runner = new Runner()
   runner.main()
 }
 
