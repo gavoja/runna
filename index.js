@@ -33,22 +33,29 @@ class Runner {
 
     const chain = process.argv[2].split(' ')
     const args = minimist(process.argv.slice(3))
+    const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
 
     this.init({flavors: args.f === true ? '' : args.f})
-    args.w && this.watch()
+    this.watch(pathToWatch)
     this.runChain(chain, this.scripts, this.flavors).then(() => {
-      args.w && this.work()
+      this.work(pathToWatch)
     })
   }
 
-  watch () {
-    watch(process.cwd(), localPath => this.queue.push(localPath))
+  watch (pathToWatch) {
+    if (!pathToWatch) {
+      return
+    }
+
+    pathToWatch && watch(pathToWatch, localPath => this.queue.push(localPath))
   }
 
-  work () {
-    console.log(`${RNA} ${LOG} Watching for changes ...`)
-    if (!this.worker) {
-      this.worker = setInterval(this.processQueue.bind(this), INTERVAL)
+  work (pathToWatch) {
+    if (pathToWatch) {
+      console.log(`${RNA} ${LOG} Watching for changes (${pathToWatch}) ...`)
+      if (!this.worker) {
+        this.worker = setInterval(this.processQueue.bind(this), INTERVAL)
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -37,12 +37,25 @@
     "server:stop": "runna-webserver -x",
     "server:reload": "runna-webserver -r",
     "test": "node ./test/tester.js test 2000",
-    "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -w -f"
+    "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -w .. -f"
   },
   "observe": {
-    "build:js -server:reload": ["test/base/js/**/*.js", "test/$FLV/js/**/*.js"],
-    "build:css -server:reload": ["test/$FLV/css/**/*.styl"],
-    "copy:assets -server:reload": ["test/$FLV/static/**/*"],
-    "build:html -server:reload": ["test/**/*.html"]
+    "build:js -server:reload": [
+      "test/base/js/**/*.js",
+      "test/$FLV/js/**/*.js"
+    ],
+    "build:css -server:reload": [
+      "test/$FLV/css/**/*.styl"
+    ],
+    "copy:assets -server:reload": [
+      "test/$FLV/static/**/*"
+    ],
+    "build:html -server:reload": [
+      "test/**/*.html"
+    ]
+  },
+  "flavors": {
+    "proj1": [],
+    "proj2": []
   }
 }
