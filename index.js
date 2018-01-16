@@ -66,13 +66,13 @@ class Runner {
     }
 
     // Get unique list of local paths.
-    let dict = {}
+    const dict = {}
     while (this.queue.length > 0) {
       dict[this.queue.pop()] = true
     }
 
     // Get all the items.
-    let paths = Object.keys(dict).map(localPath => {
+    const paths = Object.keys(dict).map(localPath => {
       return localPath.replace(/\\/g, '/').substr(process.cwd().length + 1)
     })
 
@@ -156,7 +156,7 @@ class Runner {
   getScripts (cfg, flavors) {
     const scripts = {}
     Object.keys(cfg.scripts).forEach(scriptName => {
-      let script = cfg.scripts[scriptName]
+      const script = cfg.scripts[scriptName]
       if (!script.trim()) {
         return console.log(`${RNA} ${ERR} Script is empty: ${scriptName}`)
       }
@@ -203,14 +203,14 @@ class Runner {
   }
 
   getSpawnArgs (cmd) {
-    let args = cmd.split(' ')
-    let packageName = args[0]
-    let packagePath = path.join(process.cwd(), 'node_modules', packageName)
+    const args = cmd.split(' ')
+    const packageName = args[0]
+    const packagePath = path.join(process.cwd(), 'node_modules', packageName)
     if (!fs.existsSync(packagePath)) {
       return args
     }
 
-    let cfg = this.getJson(path.join(packagePath, 'package.json'))
+    const cfg = this.getJson(path.join(packagePath, 'package.json'))
     if (cfg.bin && Object.keys(cfg.bin).includes(packageName)) {
       args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin[packageName])
       // TODO: Get current Node.js location.
@@ -222,19 +222,19 @@ class Runner {
   }
 
   getLogLines (buf, name, log) {
-    let trimmed = buf.toString('utf8').trim()
+    const trimmed = buf.toString('utf8').trim()
     return trimmed ? trimmed.split('\n').map(line => `${chalk.blue('[' + name + ']')} ${log} ${line}\n`) : []
   }
 
   runScript (scriptName, scripts, flavors) {
     // Check if script exists.
-    let script = scripts[scriptName]
+    const script = scripts[scriptName]
     if (!script) {
       console.log(`${RNA} ${ERR} Script does not exist: ${scriptName}`)
-      return new Promise((resolve, reject) => resolve())
+      return new Promise(resolve => resolve())
     }
 
-    let pipeline = []
+    const pipeline = []
     script.forEach(s => {
       if (!s.flavor || flavors.includes(s.flavor)) {
         let name = s.flavor ? `${scriptName}:${s.flavor}` : scriptName
@@ -246,11 +246,11 @@ class Runner {
   }
 
   runArgs (args, name) {
-    return new Promise((resolve, reject) => {
-      // Prepare.
+    // In case of any errors with a child process, the main process should exit with an error.
+    return new Promise(resolve => {
       let done
-      let timestamp = Date.now()
-      let end = () => {
+      const timestamp = Date.now()
+      const end = () => {
         if (!done) {
           let duration = Date.now() - timestamp
           console.log(`${RNA} ${LOG} Script ended in ${duration} ms: ${name}`)
@@ -260,16 +260,15 @@ class Runner {
 
       // Spawn child process.
       console.log(`${RNA} ${LOG} Script started: ${name}`)
-      let child = spawn(args[0], args.slice(1))
+      const child = spawn(args[0], args.slice(1))
 
-      // Resolve on proper close.
       child.on('close', () => {
         end()
       })
 
-      // Reject on error.
       child.on('error', err => {
         console.error(err)
+        this.exitWithError()
         end()
       })
 
@@ -278,17 +277,22 @@ class Runner {
         this.getLogLines(buf, name, LOG).forEach(line => process.stdout.write(line))
       })
 
-      // // Capture stderr.
+      // Capture stderr.
       child.stderr.on('data', buf => {
+        this.exitWithError()
         this.getLogLines(buf, name, ERR).forEach(line => process.stderr.write(line))
       })
     })
   }
 
+  exitWithError () {
+    process.exitCode = 1
+  }
+
   runChain (chain, scripts, flavors) {
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
       // Get all scripts up to the wait.
-      let current = []
+      const current = []
       let remaining = []
       for (let ii = 0; ii < chain.length; ++ii) {
         // Run async scripts.

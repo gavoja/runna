@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -20,8 +20,8 @@
     "runna": "./bin/runna"
   },
   "dependencies": {
-    "chalk": "^1.1.3",
-    "micromatch": "^2.3.11",
+    "chalk": "^2.3.0",
+    "micromatch": "^3.1.5",
     "minimist": "^1.2.0",
     "simple-watcher": "^3.0.0"
   },
@@ -37,6 +37,10 @@
     "server:stop": "runna-webserver -x",
     "server:reload": "runna-webserver -r",
     "test": "node ./test/tester.js test 2000",
+    "build": "node index.js \"build:html build:css build:js copy:assets\" -f",
+    "build:12": "node index.js \"build:html build:css build:js copy:assets\" -f proj1,proj2",
+    "build:3": "node index.js \"build:html build:css build:js copy:assets\" -f proj3",
+    "build:4": "node index.js \"build:html build:css build:js copy:assets\" -f proj4",
     "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -w .. -f"
   },
   "observe": {
@@ -56,6 +60,8 @@
   },
   "flavors": {
     "proj1": [],
-    "proj2": []
+    "proj2": [],
+    "proj3": [],
+    "proj4": []
   }
 }
