@@ -37,7 +37,7 @@ class Runner {
 
     this.init({flavors: args.f === true ? '' : args.f})
     this.watch(pathToWatch)
-    this.runChain(chain, this.scripts, this.flavors).then(() => {
+    this.runChain(chain, this.scripts, this.flavors, !pathToWatch).then(() => {
       this.work(pathToWatch)
     })
   }
@@ -112,7 +112,7 @@ class Runner {
       // Add task to pipeline.
       if (doRunChain) {
         this.lock = true
-        pipeline.push(this.runChain(chain.split(' '), this.scripts, [...flavors]))
+        pipeline.push(this.runChain(chain.split(' '), this.scripts, [...flavors], false))
       }
     })
 
@@ -268,7 +268,7 @@ class Runner {
 
       child.on('error', err => {
         console.error(err)
-        this.exitWithError()
+        this.handleError(watch)
         end()
       })
 
@@ -279,17 +279,21 @@ class Runner {
 
       // Capture stderr.
       child.stderr.on('data', buf => {
-        this.exitWithError()
+        this.handleError(watch)
         this.getLogLines(buf, name, ERR).forEach(line => process.stderr.write(line))
       })
     })
   }
 
-  exitWithError () {
+  handleError (watch) {
+    if (!watch) {
+      process.exit(1)
+    }
+
     process.exitCode = 1
   }
 
-  runChain (chain, scripts, flavors) {
+  runChain (chain, scripts, flavors, exitOnError) {
     return new Promise(resolve => {
       // Get all scripts up to the wait.
       const current = []
@@ -319,7 +323,7 @@ class Runner {
       // Execute all current scripts.
       current.length && Promise
         .all(current.map(script => this.runScript(script, scripts, flavors)))
-        .then(() => this.runChain(remaining, scripts, flavors))
+        .then(() => this.runChain(remaining, scripts, flavors, exitOnError))
         .then(() => resolve())
     })
   }
