@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -41,7 +41,7 @@
     "build:12": "node index.js \"build:html build:css build:js copy:assets\" -f proj1,proj2",
     "build:3": "node index.js \"build:html build:css build:js copy:assets\" -f proj3",
     "build:4": "node index.js \"build:html build:css build:js copy:assets\" -f proj4",
-    "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -w .. -f"
+    "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -w -f"
   },
   "observe": {
     "build:js -server:reload": [

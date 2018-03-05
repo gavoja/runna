@@ -54,12 +54,12 @@ class Runner {
     if (pathToWatch) {
       console.log(`${RNA} ${LOG} Watching for changes (${pathToWatch}) ...`)
       if (!this.worker) {
-        this.worker = setInterval(this.processQueue.bind(this), INTERVAL)
+        this.worker = setInterval(this.processQueue.bind(this, pathToWatch), INTERVAL)
       }
     }
   }
 
-  processQueue () {
+  processQueue (pathToWatch) {
     // Wait for the previous task to complete to avoid concurrency conflicts.
     if (this.lock) {
       return
@@ -73,7 +73,7 @@ class Runner {
 
     // Get all the items.
     const paths = Object.keys(dict).map(localPath => {
-      return localPath.replace(/\\/g, '/').substr(process.cwd().length + 1)
+      return localPath.replace(/\\/g, '/').substr(pathToWatch.length + 1)
     })
 
     if (paths.length === 0) {
