@@ -14,4 +14,10 @@ setTimeout(() => {
   }
 
   console[log](action + `\r\nline 2\n${chalk.yellow('line 3')}\r\n`)
+
+  console.log(111)
+  if (action === 'build:js:proj5') {
+    console.log(222)
+    process.exit(1)
+  }
 }, parseInt(delay, 10))

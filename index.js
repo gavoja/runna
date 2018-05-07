@@ -36,6 +36,7 @@ class Runner {
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
 
     this.init({flavors: args.f === true ? '' : args.f})
+
     this.watch(pathToWatch)
     this.runChain(chain, this.scripts, this.flavors, !pathToWatch).then(() => {
       this.work(pathToWatch)
@@ -226,7 +227,7 @@ class Runner {
     return trimmed ? trimmed.split('\n').map(line => `${chalk.blue('[' + name + ']')} ${log} ${line}\n`) : []
   }
 
-  runScript (scriptName, scripts, flavors) {
+  runScript (scriptName, scripts, flavors, exitOnError) {
     // Check if script exists.
     const script = scripts[scriptName]
     if (!script) {
@@ -238,14 +239,14 @@ class Runner {
     script.forEach(s => {
       if (!s.flavor || flavors.includes(s.flavor)) {
         let name = s.flavor ? `${scriptName}:${s.flavor}` : scriptName
-        pipeline.push(this.runArgs(s.args, name))
+        pipeline.push(this.runArgs(s.args, name, exitOnError))
       }
     })
 
     return Promise.all(pipeline)
   }
 
-  runArgs (args, name) {
+  runArgs (args, name, exitOnError) {
     // In case of any errors with a child process, the main process should exit with an error.
     return new Promise(resolve => {
       let done
@@ -262,13 +263,16 @@ class Runner {
       console.log(`${RNA} ${LOG} Script started: ${name}`)
       const child = spawn(args[0], args.slice(1))
 
-      child.on('close', () => {
+      child.on('close', code => {
+        if (code !== 0) {
+          this.handleError(exitOnError)
+        }
         end()
       })
 
       child.on('error', err => {
         console.error(err)
-        this.handleError(watch)
+        this.handleError(exitOnError)
         end()
       })
 
@@ -279,14 +283,14 @@ class Runner {
 
       // Capture stderr.
       child.stderr.on('data', buf => {
-        this.handleError(watch)
+        this.handleError(exitOnError)
         this.getLogLines(buf, name, ERR).forEach(line => process.stderr.write(line))
       })
     })
   }
 
-  handleError (watch) {
-    if (!watch) {
+  handleError (exitOnError) {
+    if (exitOnError) {
       process.exit(1)
     }
 
@@ -301,7 +305,7 @@ class Runner {
       for (let ii = 0; ii < chain.length; ++ii) {
         // Run async scripts.
         if (chain[ii].startsWith(ASNC)) {
-          this.runScript(chain[ii].substr(1), scripts, flavors)
+          this.runScript(chain[ii].substr(1), scripts, flavors, exitOnError)
           continue
         }
 
@@ -322,7 +326,7 @@ class Runner {
 
       // Execute all current scripts.
       current.length && Promise
-        .all(current.map(script => this.runScript(script, scripts, flavors)))
+        .all(current.map(script => this.runScript(script, scripts, flavors, exitOnError)))
         .then(() => this.runChain(remaining, scripts, flavors, exitOnError))
         .then(() => resolve())
     })
