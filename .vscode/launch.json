@@ -14,9 +14,16 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Test",
+      "name": "Build",
       "program": "${workspaceFolder}\\index.js",
-      "args": ["+server build:html build:css build:js", "-w",  "..",  "-f", "proj5"]
+      "args": ["clean - build:html build:css build:js", "-f proj1,proj2"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Dev",
+      "program": "${workspaceFolder}\\index.js",
+      "args": ["+serve clean - build:html build:css build:js - serve:reload", "-w", "..", "-f", "proj1,proj2"]
     }
   ]
 }

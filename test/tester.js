@@ -1,23 +1,20 @@
-const chalk = require('chalk')
-const delay = process.argv[3]
-const action = process.argv[2]
+const minimist = require('minimist')
+const args = minimist(process.argv.slice(2))
+
+console.log(`Starting`)
+args.flavors && console.log(`Flavors detected: ${args.flavors}`)
 
 setTimeout(() => {
-  let log = 'log'
-
-  if (action === 'build:js:proj3') {
-    throw (new Error('JS build failed.'))
+  console.log(`Finalizing`)
+  if (args['error-throw']) {
+    throw new Error('Build failed.')
   }
 
-  if (action === 'build:js:proj4') {
-    log = 'error'
+  if (args['error-log']) {
+    console.error('Unexpected error occured.')
   }
 
-  console[log](action + `\r\nline 2\n${chalk.yellow('line 3')}\r\n`)
-
-  console.log(111)
-  if (action === 'build:js:proj5') {
-    console.log(222)
+  if (args['error-exit']) {
     process.exit(1)
   }
-}, parseInt(delay, 10))
+}, parseInt(args.delay || 0, 10))
