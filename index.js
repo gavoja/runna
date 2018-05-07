@@ -49,7 +49,7 @@ class Runner {
     //   code: 'node some-script.js -f flavor1'
     // }]
     const scripts = []
-    chain.split(' ').forEach(text => {
+    for (const text of chain.split(' ')) {
       const name = text.replace(/[+]*(.*)/g, '$1')
       const isBackground = text.includes('+')
       const isPause = text === '-'
@@ -57,14 +57,15 @@ class Runner {
 
       // Add non-flavoured script.
       if (!code || !code.includes('$FLV')) {
-        return scripts.push({name, isBackground, isPause, code})
+        scripts.push({name, isBackground, isPause, code})
+        continue
       }
 
       // Add flavoured scripts.
       for (const flavor of flavors) {
         scripts.push({name: `${name}::${flavor}`, isBackground, isPause, code: code.replace(/\$FLV/g, flavor)})
       }
-    })
+    }
 
     // Run all the scripts in a chain.
     let msg = flavors.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(flavors)}` : chalk.magenta(chain)
