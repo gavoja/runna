@@ -52,7 +52,7 @@ build:js          | npm run build:js
 copy:html         | npm run copy:html
 ```
 
-### STEP 3: Run your chain:
+### STEP 3: Run your chain
 
 ```
 npm run build
