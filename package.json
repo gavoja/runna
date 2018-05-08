@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "1.3.2",
+  "version": "2.0.0",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -20,51 +20,56 @@
     "runna": "./bin/runna"
   },
   "dependencies": {
-    "chalk": "^2.3.0",
+    "chalk": "^2.4.1",
     "micromatch": "^3.1.5",
     "minimist": "^1.2.0",
     "simple-watcher": "^3.0.0"
   },
   "devDependencies": {
+    "autoprefixer": "^8.4.1",
+    "babel-preset-env": "^1.6.1",
+    "babelify": "^7.3.0",
+    "browser-sync": "2.23.6",
+    "browserify": "^13.1.0",
+    "copyfiles": "^2.0.0",
+    "mkdirp": "^0.5.1",
+    "postcss": "^6.0.22",
+    "postcss-cli": "^5.0.0",
+    "rimraf": "^2.6.2",
     "runna-webserver": "^0.1.1"
   },
   "scripts": {
-    "build:css": "node ./test/tester.js build:css:$FLV 400",
-    "build:js": "node ./test/tester.js build:js:$FLV 300",
-    "build:html": "node ./test/tester.js build:html 100",
-    "copy:assets": "node test/tester.js copy:assets:$FLV 200",
-    "server": "runna-webserver -w test",
-    "server:stop": "runna-webserver -x",
-    "server:reload": "runna-webserver -r",
-    "test": "node ./test/tester.js test 2000",
-    "build": "node index.js \"build:html build:css build:js copy:assets\" -f",
-    "dev": "node index.js \"+server build:html build:css build:js copy:assets -server:reload\" -w -f",
-    "build:12": "node index.js \"build:html build:css build:js copy:assets\" -f proj1,proj2",
-    "build:3": "node index.js \"build:html build:css build:js copy:assets\" -f proj3",
-    "build:4": "node index.js \"build:html build:css build:js copy:assets\" -f proj4",
-    "build:5": "node index.js \"build:html build:css build:js copy:assets\" -f proj5",
-    "foo": "node index.js \"build:js\" -f proj5"
+    "clean": "rimraf ./test/dist",
+    "create-dirs": "mkdirp ./test/dist/$FLV",
+    "build:css": "postcss --use autoprefixer -o ./test/dist/$FLV/index.css ./test/src/$FLV/index.css",
+    "build:css::red": "postcss --use autoprefixer -o ./test/dist/red/index.css ./test/src/red/index.css",
+    "build:css::blue": "postcss --use autoprefixer -o ./test/dist/blue/index.css ./test/src/blue/index.css",
+    "build:js": "browserify ./test/src/$FLV/index.js -o ./test/dist/$FLV/index.js -t [ babelify --presets [ babel-preset-env ] ]",
+    "build:js::red": "browserify ./test/src/red/index.js -o ./test/dist/red/index.js -t [ babelify --presets [ babel-preset-env ] ]",
+    "build:js::blue": "browserify ./test/src/blue/index.js -o ./test/dist/blue/index.js -t [ babelify --presets [ babel-preset-env ] ]",
+    "build:html": "copyfiles --flat ./test/src/base/index.html ./test/dist/$FLV",
+    "break:log": "node ./test/tester.js --error-log",
+    "break:throw": "node ./test/tester.js --error-throw",
+    "break:exit": "node ./test/tester.js --error-exit",
+    "serve": "runna-webserver -w ./test/dist",
+    "serve:stop": "runna-webserver -x",
+    "serve:reload": "runna-webserver -r",
+    "build": "node index.js \"clean - create-dirs - build:html build:css build:js\" -f blue,red",
+    "build:break:log": "node index.js \"clean - create-dirs - build:html build:css build:js break:log\" -f blue,red",
+    "build:break:throw": "node index.js \"clean - create-dirs - build:html build:css build:js break:throw\" -f blue,red",
+    "build:break:exit": "node index.js \"clean - create-dirs - build:html build:css build:js break:exit\" -f blue,red",
+    "dev": "node index.js \"+serve clean - create-dirs - build:html build:css build:js - serve:reload\" -w .. -f blue,red"
   },
   "observe": {
-    "build:js -server:reload": [
-      "test/base/js/**/*.js",
-      "test/$FLV/js/**/*.js"
+    "build:js - serve:reload": [
+      "runna/test/src/base/*.js",
+      "runna/test/src/$FLV/*.js"
     ],
-    "build:css -server:reload": [
-      "test/$FLV/css/**/*.styl"
+    "build:css - serve:reload": [
+      "runna/test/src/$FLV/*.css"
     ],
-    "copy:assets -server:reload": [
-      "test/$FLV/static/**/*"
-    ],
-    "build:html -server:reload": [
-      "test/**/*.html"
+    "build:html - serve:reload": [
+      "runna/test/src/base/*.html"
     ]
-  },
-  "flavors": {
-    "proj1": [],
-    "proj2": [],
-    "proj3": [],
-    "proj4": [],
-    "proj5": []
   }
 }

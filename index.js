@@ -8,337 +8,340 @@ const mm = require('micromatch')
 const path = require('path')
 const watch = require('simple-watcher')
 
-const INTERVAL = 300
-const WAIT = '-'
-const ASNC = '+'
-const RNA = chalk.blue('[runna]')
-const ERR = chalk.red('[err]')
-const LOG = chalk.green('[log]')
-const FLV = '$FLV'
+const CHILD_EXIT_WAIT = 50
+const FILE_WATCH_WAIT = 300
+const RNA = chalk.blue('runna')
+const ERR = chalk.red('err')
+const LOG = chalk.green('log')
+const HELP = `
+Usage:
+  runna <chain> [OPTIONS]
+
+Options:
+  -f <flavors>             Enable flavors; a comma separated list.
+  -w [<path_to_watch>]     Default is current.
+`
 
 class Runner {
-  init (args) {
-    args = args || {}
-    this.cfg = this.getCfg()
-    this.flavors = this.getFlavors(this.cfg, args.flavors)
-    this.scripts = this.getScripts(this.cfg, this.flavors)
-    this.observe = this.getObserve(this.cfg, this.flavors)
-    this.queue = []
+  async main () {
+    const version = this.getJson(path.join(__dirname, 'package.json')).version
+    console.log(`Runna version ${version}.`)
 
-    // console.log(JSON.stringify(this.observe, null, 2))
-  }
+    if (process.argv.length < 3) {
+      console.log(HELP)
+      process.exit(0)
+    }
 
-  main () {
-    this.handleExit()
-
-    const chain = process.argv[2].split(' ')
+    const chain = process.argv[2]
     const args = minimist(process.argv.slice(3))
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
+    const flavors = args.f ? args.f.trim().split(',') : []
 
-    this.init({flavors: args.f === true ? '' : args.f})
-
-    this.watch(pathToWatch)
-    this.runChain(chain, this.scripts, this.flavors, !pathToWatch).then(() => {
-      this.work(pathToWatch)
-    })
+    this.init(chain, flavors, pathToWatch)
   }
 
-  watch (pathToWatch) {
-    if (!pathToWatch) {
-      return
-    }
+  async init (chain, flavors, pathToWatch) {
+    this.handleExit()
 
-    pathToWatch && watch(pathToWatch, localPath => this.queue.push(localPath))
-  }
+    this.cfg = this.getCfg()
+    this.queue = []
+    this.children = {}
 
-  work (pathToWatch) {
-    if (pathToWatch) {
-      console.log(`${RNA} ${LOG} Watching for changes (${pathToWatch}) ...`)
-      if (!this.worker) {
-        this.worker = setInterval(this.processQueue.bind(this, pathToWatch), INTERVAL)
-      }
-    }
-  }
-
-  processQueue (pathToWatch) {
-    // Wait for the previous task to complete to avoid concurrency conflicts.
-    if (this.lock) {
-      return
-    }
-
-    // Get unique list of local paths.
-    const dict = {}
-    while (this.queue.length > 0) {
-      dict[this.queue.pop()] = true
-    }
-
-    // Get all the items.
-    const paths = Object.keys(dict).map(localPath => {
-      return localPath.replace(/\\/g, '/').substr(pathToWatch.length + 1)
-    })
-
-    if (paths.length === 0) {
-      return // Skip if no unique paths.
-    }
-
-    this.processPaths(paths)
-  }
-
-  processPaths (paths) {
-    // Get the pipeline.
-    const pipeline = []
-    Object.keys(this.observe).forEach(chain => {
-      // Get the flavors that match the pattern.
-      let flavors = new Set()
-      const doRunChain = this.observe[chain].some(w => {
-        const match = mm(paths, w.pattern)
-
-        // Continue if no match.
-        if (match.length === 0) {
-          return false
-        }
-
-        if (w.flavor) {
-          // Add matched flavor.
-          this.addFlavor(this.cfg, flavors, w.flavor)
-          // flavors.add(w.flavor)
-        } else {
-          // Add all flavors if generic.
-          flavors = new Set(this.flavors)
-        }
-
-        return true
-      })
-
-      // Add task to pipeline.
-      if (doRunChain) {
-        this.lock = true
-        pipeline.push(this.runChain(chain.split(' '), this.scripts, [...flavors], false))
-      }
-    })
-
-    // Wait for the pipeline to process and unlock.
-    if (pipeline.length > 0) {
-      Promise.all(pipeline).then(() => {
-        this.lock = false
-      })
-    }
+    await this.runChain(chain, flavors)
+    pathToWatch && this.observe(pathToWatch, flavors)
   }
 
   //
-  // No side effects.
+  // Chain processing.
   //
 
-  getCfg () {
-    const cfg = this.getJson(path.join(process.cwd(), 'package.json'))
-    cfg.flavors = cfg.flavors || {}
-    return cfg
-  }
+  // chain ~ '+foo - bar baz'
+  async runChain (chain, flavors, exitOnError = true) {
+    const timestamp = Date.now()
 
-  addFlavor (cfg, flavors, flavor) {
-    flavors.add(flavor)
-    cfg.flavors[flavor] && cfg.flavors[flavor].forEach(f => flavors.add(f))
-  }
+    // Get scripts: [{
+    //   name: 'some:script'
+    //   isBackground: false,
+    //   isPause: false,
+    //   code: 'node some-script.js -f flavor1'
+    // }]
+    const scripts = []
+    for (const text of chain.split(' ')) {
+      const name = text.replace(/[+]*(.*)/g, '$1')
+      const isBackground = text.includes('+')
+      const isPause = text === '-'
+      const code = this.cfg.scripts[name]
 
-  getFlavors (cfg, farg) {
-    let flavors = []
-    if (typeof farg === 'string') {
-      flavors = farg ? farg.split(',') : Object.keys(cfg.flavors)
-    }
-
-    console.log(`${RNA} ${LOG} With flavors: ${flavors.join(', ')}`)
-    return flavors
-  }
-
-  applyFlavor (string, flavor) {
-    return string.replace(new RegExp('\\' + FLV, 'g'), flavor)
-  }
-
-  getScripts (cfg, flavors) {
-    const scripts = {}
-    Object.keys(cfg.scripts).forEach(scriptName => {
-      const script = cfg.scripts[scriptName]
-      if (!script.trim()) {
-        return console.log(`${RNA} ${ERR} Script is empty: ${scriptName}`)
+      // Add non-flavoured script.
+      if (!code || !code.includes('$FLV')) {
+        scripts.push({name, isBackground, isPause, code})
+        continue
       }
 
-      scripts[scriptName] = []
-
-      // Non flavored scripts.
-      if (!script.includes(FLV) || !flavors.length) {
-        return scripts[scriptName].push({args: this.getSpawnArgs(script)})
+      // Add flavoured scripts.
+      for (const flavor of flavors) {
+        scripts.push({name: `${name}::${flavor}`, isBackground, isPause, code: code.replace(/\$FLV/g, flavor)})
       }
-
-      // Flavored scripts
-      flavors.forEach(flavor => {
-        const args = this.getSpawnArgs(this.applyFlavor(script, flavor))
-        scripts[scriptName].push({args, flavor})
-      })
-    })
-
-    return scripts
-  }
-
-  getObserve (cfg, flavors) {
-    const observe = {}
-    Object.keys(cfg.observe).forEach(chain => {
-      observe[chain] = []
-      cfg.observe[chain].forEach(pattern => {
-        // Non flavored observe.
-        if (!pattern.includes(FLV) || !flavors.length) {
-          return observe[chain].push({pattern})
-        }
-
-        // Flavored observe.
-        flavors.forEach(flavor => {
-          observe[chain].push({pattern: this.applyFlavor(pattern, flavor), flavor})
-        })
-      })
-    })
-
-    return observe
-  }
-
-  getJson (filePath) {
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
-  }
-
-  getSpawnArgs (cmd) {
-    const args = cmd.split(' ')
-    const packageName = args[0]
-    const packagePath = path.join(process.cwd(), 'node_modules', packageName)
-    if (!fs.existsSync(packagePath)) {
-      return args
     }
 
-    const cfg = this.getJson(path.join(packagePath, 'package.json'))
-    if (cfg.bin && Object.keys(cfg.bin).includes(packageName)) {
-      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin[packageName])
-      // TODO: Get current Node.js location.
-      args.unshift('node')
-      return args
-    }
+    // Run all the scripts in a chain.
+    let msg = flavors.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(flavors)}` : chalk.magenta(chain)
 
-    return args
-  }
-
-  getLogLines (buf, name, log) {
-    const trimmed = buf.toString('utf8').trim()
-    return trimmed ? trimmed.split('\n').map(line => `${chalk.blue('[' + name + ']')} ${log} ${line}\n`) : []
-  }
-
-  runScript (scriptName, scripts, flavors, exitOnError) {
-    // Check if script exists.
-    const script = scripts[scriptName]
-    if (!script) {
-      console.log(`${RNA} ${ERR} Script does not exist: ${scriptName}`)
-      return new Promise(resolve => resolve())
-    }
-
-    const pipeline = []
-    script.forEach(s => {
-      if (!s.flavor || flavors.includes(s.flavor)) {
-        let name = s.flavor ? `${scriptName}:${s.flavor}` : scriptName
-        pipeline.push(this.runArgs(s.args, name, exitOnError))
+    console.log(`${RNA} ${LOG} Chain ${msg} started.`)
+    for (const script of scripts) {
+      if (script.isPause) {
+        await this.waitForAllChildrenToComplete()
+      } else {
+        this.runScript(script, exitOnError)
       }
-    })
-
-    return Promise.all(pipeline)
+    }
+    await this.waitForAllChildrenToComplete()
+    const duration = Date.now() - timestamp
+    console.log(`${RNA} ${LOG} Chain ${msg} completed in ${duration} ms.`)
   }
 
-  runArgs (args, name, exitOnError) {
-    // In case of any errors with a child process, the main process should exit with an error.
+  async waitForAllChildrenToComplete () {
+    console.log(`${RNA} ${LOG} Waiting for all running scripts to complete...`)
+    while (Object.keys(this.children).length !== 0) {
+      await this.wait(CHILD_EXIT_WAIT)
+    }
+  }
+
+  // Spawn child process.
+  async runScript (script, exitOnError) {
+    const spawnArgs = this.getSpawnArgs(script.code)
     return new Promise(resolve => {
-      let done
       const timestamp = Date.now()
+
+      // Spawn child process.
+      console.log(`${RNA} ${LOG} Script ${script.name} started.`)
+      const child = spawn(spawnArgs[0], spawnArgs.slice(1))
+
+      // Finalization handling.
+      let done
       const end = () => {
         if (!done) {
           let duration = Date.now() - timestamp
-          console.log(`${RNA} ${LOG} Script ended in ${duration} ms: ${name}`)
+          console.log(`${RNA} ${LOG} Script ${script.name} completed in ${duration} ms.`)
+          delete this.children[child.pid]
           done = resolve()
         }
       }
 
-      // Spawn child process.
-      console.log(`${RNA} ${LOG} Script started: ${name}`)
-      const child = spawn(args[0], args.slice(1))
-
       child.on('close', code => {
         if (code !== 0) {
+          console.error(`${RNA} ${ERR} Script ${script.name} exited with error code ${code}.`)
           this.handleError(exitOnError)
         }
         end()
       })
 
       child.on('error', err => {
+        console.error(`${RNA} ${ERR} Script ${script.name} threw an error.`)
         console.error(err)
         this.handleError(exitOnError)
         end()
+        // throw err
       })
 
       // Capture stdout.
       child.stdout.on('data', buf => {
-        this.getLogLines(buf, name, LOG).forEach(line => process.stdout.write(line))
+        this.getLogLines(buf, script.name, LOG).forEach(line => process.stdout.write(line))
       })
 
       // Capture stderr.
       child.stderr.on('data', buf => {
+        this.getLogLines(buf, script.name, ERR).forEach(line => process.stderr.write(line))
         this.handleError(exitOnError)
-        this.getLogLines(buf, name, ERR).forEach(line => process.stderr.write(line))
       })
+
+      // Memorize.
+      if (!script.isBackground) {
+        this.children[child.pid] = child
+      }
     })
+  }
+
+  getSpawnArgs (cmd) {
+    const args = cmd.split(' ')
+    const packageName = args[0]
+
+    // Resolve local package binary.
+    if (this.cfg.binaries[packageName]) {
+      args[0] = this.cfg.binaries[packageName]
+      args.unshift(process.execPath)
+    }
+
+    return args
+  }
+
+  //
+  // Watching.
+  //
+
+  async observe (pathToWatch, flavors) {
+    // Get rules: [{
+    //   chain: '+foo - bar baz'
+    //   pattern: 'c:/absolute/path/to/flavor1/**'
+    //   flavors: ['flavor1']
+    // },{
+    //   chain: '+foo - bar baz'
+    //   pattern: 'c:/absolute/path/to/flavor2/**'
+    //   flavors: [flavor2']
+    // },{
+    //   chain: '+foo - bar baz'
+    //   pattern: 'c:/absolute/path/to/base/**'
+    //   flavors: ['flavor1', 'flavor2']
+    // }]
+    const rules = []
+    for (const [chain, patterns] of Object.entries(this.cfg.observe)) {
+      for (let pattern of patterns) {
+        // Align with directory structure and normalize slashes.
+        pattern = path.resolve(pathToWatch, pattern).replace(/\\/g, '/')
+
+        // Non-flavoured pattern means all the flavors apply.
+        if (!pattern.includes('$FLV')) {
+          rules.push({chain, pattern, flavors})
+          continue
+        }
+        // Add rule for each flavor separately.
+        for (const flavor of flavors) {
+          rules.push({chain, pattern: pattern.replace(/\$FLV/g, flavor), flavors: [flavor]})
+        }
+      }
+    }
+
+    // Initialize queue.
+    this.queue = []
+    const waitMsg = `${RNA} ${LOG} Watching ${chalk.yellow(pathToWatch)} for changes...`
+    console.log(waitMsg)
+    watch(pathToWatch, localPath => this.queue.push(localPath))
+
+    // Main loop.
+    while (true) {
+      if (await this.processQueue(rules)) {
+        console.log(waitMsg)
+      }
+      await this.wait(FILE_WATCH_WAIT)
+    }
+  }
+
+  async processQueue (rules) {
+    if (this.lock || this.queue.length === 0) {
+      return
+    }
+
+    this.lock = true
+
+    // Dequeue items and normalize slashes.
+    const paths = Array.from(new Set(this.queue.splice(0))).map(p => p.replace(/\\/g, '/'))
+
+    // Iterate over changes and look for a match.
+    const chainsToRun = {}
+    for (const rule of rules) {
+      const match = mm.match(paths, rule.pattern)
+      if (match.length === 0) {
+        continue
+      }
+
+      for (const m of match) {
+        console.log(`${RNA} ${LOG} Changed ${chalk.yellow(path.resolve(m))}`)
+      }
+
+      if (!chainsToRun[rule.chain]) {
+        chainsToRun[rule.chain] = new Set(rule.flavors)
+        continue
+      }
+
+      for (const flavor of rule.flavors) {
+        chainsToRun[rule.chain].add(flavor)
+      }
+    }
+
+    const any = Object.keys(chainsToRun).length > 0
+    for (const [chain, flavors] of Object.entries(chainsToRun)) {
+      await this.runChain(chain, Array.from(flavors), false)
+    }
+
+    this.lock = false
+    return any
+  }
+
+  //
+  // Exit handling.
+  //
+
+  killChildren () {
+    for (const child of Object.values(this.children)) {
+      child.pid && child.kill('SIGINT')
+    }
   }
 
   handleError (exitOnError) {
+    process.exitCode = 1
     if (exitOnError) {
+      console.log(`${RNA} ${LOG} Shutting down.\n`)
+      this.killChildren()
       process.exit(1)
     }
-
-    process.exitCode = 1
-  }
-
-  runChain (chain, scripts, flavors, exitOnError) {
-    return new Promise(resolve => {
-      // Get all scripts up to the wait.
-      const current = []
-      let remaining = []
-      for (let ii = 0; ii < chain.length; ++ii) {
-        // Run async scripts.
-        if (chain[ii].startsWith(ASNC)) {
-          this.runScript(chain[ii].substr(1), scripts, flavors, exitOnError)
-          continue
-        }
-
-        // Stop at wait scripts.
-        if (chain[ii].startsWith(WAIT)) {
-          remaining = chain.slice(ii)
-          remaining[0] = remaining[0].substr(1)
-          break
-        }
-
-        current.push(chain[ii])
-      }
-
-      // Fire callback when nothing to process.
-      if (!current.length && !remaining.length) {
-        return resolve()
-      }
-
-      // Execute all current scripts.
-      current.length && Promise
-        .all(current.map(script => this.runScript(script, scripts, flavors, exitOnError)))
-        .then(() => this.runChain(remaining, scripts, flavors, exitOnError))
-        .then(() => resolve())
-    })
   }
 
   handleExit () {
-    const handler = () => {
-      console.log(`${RNA} ${LOG} Shutting down.`)
+    process.on('SIGINT', () => {
+      console.log(`${RNA} ${LOG} Shutting down.\n`)
+      this.killChildren()
       process.exit()
+    })
+  }
+
+  //
+  // Helpers.
+  //
+
+  getJson (filePath) {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  }
+
+  resolveLocalBinaries (cfg) {
+    cfg.binaries = {}
+    const deps = [].concat(Object.keys(cfg.dependencies || []), Object.keys(cfg.devDependencies || []))
+    for (const packageName of deps) {
+      const packagePath = path.join(process.cwd(), 'node_modules', packageName)
+      if (!fs.existsSync(packagePath)) {
+        continue
+      }
+
+      const packageCfg = this.getJson(path.join(packagePath, 'package.json'))
+      if (!packageCfg.bin) {
+        continue
+      }
+
+      if (typeof packageCfg.bin === 'string') {
+        cfg.binaries[packageName] = path.join(packagePath, packageCfg.bin)
+        continue
+      }
+
+      for (const [binName, binPath] of Object.entries(packageCfg.bin)) {
+        cfg.binaries[binName] = path.join(packagePath, binPath)
+      }
     }
 
-    process.on('SIGINT', handler)
+    return cfg
+  }
+
+  getCfg () {
+    const cfg = this.getJson(path.join(process.cwd(), 'package.json'))
+    cfg.flavors = cfg.flavors || {}
+    return this.resolveLocalBinaries(cfg)
+  }
+
+  getLogLines (buf, name, log) {
+    const trimmed = buf.toString('utf8').trim()
+    return trimmed ? trimmed.split('\n').map(line => `${chalk.blue(name)} ${log} ${line}\n`) : []
+  }
+
+  async wait (ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
   }
 }
 
