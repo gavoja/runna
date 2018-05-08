@@ -21,22 +21,17 @@
   },
   "dependencies": {
     "chalk": "^2.4.1",
-    "micromatch": "^3.1.5",
-    "minimist": "^1.2.0",
-    "simple-watcher": "^3.0.0"
+    "micromatch": "^3.1.10",
+    "simple-watcher": "^3.0.0",
+    "subarg": "^1.0.0"
   },
   "devDependencies": {
-    "autoprefixer": "^8.4.1",
+    "babel": "^6.23.0",
+    "babel-core": "^6.26.3",
     "babel-preset-env": "^1.6.1",
-    "babelify": "^7.3.0",
-    "browser-sync": "2.23.6",
-    "browserify": "^13.1.0",
-    "copyfiles": "^2.0.0",
-    "mkdirp": "^0.5.1",
-    "postcss": "^6.0.22",
-    "postcss-cli": "^5.0.0",
-    "rimraf": "^2.6.2",
-    "runna-webserver": "^0.1.1"
+    "babelify": "^8.0.0",
+    "browserify": "^16.2.0",
+    "runna-webserver": "^0.1.2"
   },
   "scripts": {
     "clean": "rimraf ./test/dist",
@@ -54,11 +49,11 @@
     "serve": "runna-webserver -w ./test/dist",
     "serve:stop": "runna-webserver -x",
     "serve:reload": "runna-webserver -r",
-    "build": "node index.js \"clean - create-dirs - build:html build:css build:js\" -f blue,red",
-    "build:break:log": "node index.js \"clean - create-dirs - build:html build:css build:js break:log\" -f blue,red",
-    "build:break:throw": "node index.js \"clean - create-dirs - build:html build:css build:js break:throw\" -f blue,red",
-    "build:break:exit": "node index.js \"clean - create-dirs - build:html build:css build:js break:exit\" -f blue,red",
-    "dev": "node index.js \"+serve clean - create-dirs - build:html build:css build:js - serve:reload\" -w .. -f blue,red"
+    "build": "node index.js [ clean - create-dirs - build:html build:css build:js ] -f blue,red",
+    "build:break:log": "node index.js [ clean - create-dirs - build:html build:css build:js break:log ] -f blue,red",
+    "build:break:throw": "node index.js [ clean - create-dirs - build:html build:css build:js break:throw ] -f blue,red",
+    "build:break:exit": "node index.js [ clean - create-dirs - build:html build:css build:js break:exit ] -f blue,red",
+    "dev": "node index.js [ +serve clean - create-dirs - build:html build:css build:js - serve:reload ] -w .. -f blue,red"
   },
   "observe": {
     "build:js - serve:reload": [

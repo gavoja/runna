@@ -11,11 +11,11 @@
 
 ```
 Usage:
-  runna <chain> [OPTIONS]
+  runna <chain> [options]
 
 Options:
   -f <flavors>             Enable flavors; a comma separated list.
-  -w [<path_to_watch>]     Default is current.
+  -w [<path-to-watch>]     Default is current.
 ```
 
 ## Quck start
@@ -38,7 +38,7 @@ scripts: {
 
 ```json
 scripts: {
-  "build": "runna \"clean - create-dist-dir - build:js copy:html\"",
+  "build": "runna [ clean - create-dist-dir - build:js copy:html ]",
 }
 ```
 
@@ -68,7 +68,7 @@ The development mode allows triggering chain upon a file change. To enable watch
 
 ```json
 scripts: {
-  "develop": "runna \"+serve clean - create-dist-dir - build:js copy:html - serve:reload\"" -w,
+  "develop": "runna [ +serve clean - create-dist-dir - build:js copy:html - serve:reload ] -w,
 }
 ```
 
@@ -103,7 +103,7 @@ Note the `$FLV` placeholder - it's presence automatically enables flavor based b
 Let's update our `develop` chain to support flavors. To do so, simply add `-f` parameter:
 ```json
 scripts: {
-  "develop": "runna \"+serve clean - create-dist-dir - build:js copy:html - serve:reload\"" -w -f red,blue,
+  "develop": "runna [ +serve clean - create-dist-dir - build:js copy:html - serve:reload ] -w -f red,blue,
 }
 ```
 

@@ -9,21 +9,28 @@
       "request": "launch",
       "name": "Break (exit error code)",
       "program": "${workspaceFolder}\\index.js",
-      "args": ["build:js", "-f", "proj5"]
+      "args": ["[", "build:js", "]", "-f", "proj5"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Invalid",
+      "program": "${workspaceFolder}\\index.js",
+      "args": ["[", "i-do-not-exist", "]"]
     },
     {
       "type": "node",
       "request": "launch",
       "name": "Build",
       "program": "${workspaceFolder}\\index.js",
-      "args": ["clean - build:html build:css build:js", "-f proj1,proj2"]
+      "args": ["[", "clean", "-", "build:html", "build:css", "build:js", "]", "-f proj1,proj2"]
     },
     {
       "type": "node",
       "request": "launch",
       "name": "Dev",
       "program": "${workspaceFolder}\\index.js",
-      "args": ["+serve clean - build:html build:css build:js - serve:reload", "-w", "..", "-f", "proj1,proj2"]
+      "args": ["[", "+serve clean", "-", "build:html", "build:css", "build:js", "-", "serve:reload", "]", "-w", "..", "-f", "proj1,proj2"]
     }
   ]
 }

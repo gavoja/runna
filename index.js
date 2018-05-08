@@ -3,11 +3,11 @@
 const chalk = require('chalk')
 const spawn = require('child_process').spawn
 const fs = require('fs')
-const minimist = require('minimist')
 const mm = require('micromatch')
 const path = require('path')
 const watch = require('simple-watcher')
-
+const subarg = require('subarg'
+)
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
 const RNA = chalk.blue('runna')
@@ -15,11 +15,11 @@ const ERR = chalk.red('err')
 const LOG = chalk.green('log')
 const HELP = `
 Usage:
-  runna <chain> [OPTIONS]
+  runna <chain> [options]
 
 Options:
   -f <flavors>             Enable flavors; a comma separated list.
-  -w [<path_to_watch>]     Default is current.
+  -w [<path-to-watch>]     Default is current.
 `
 
 class Runner {
@@ -27,13 +27,13 @@ class Runner {
     const version = this.getJson(path.join(__dirname, 'package.json')).version
     console.log(`Runna version ${version}.`)
 
-    if (process.argv.length < 3) {
+    const args = subarg(process.argv.slice(2))
+    if (!args['_'] || args['_'].length === 0 || !args['_'][0]['_'] || args['_'][0]['_'].length === 0) {
       console.log(HELP)
       process.exit(0)
     }
 
-    const chain = process.argv[2]
-    const args = minimist(process.argv.slice(3))
+    const chain = args['_'][0]['_'].join(' ')
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
     const flavors = args.f ? args.f.trim().split(',') : []
 
@@ -91,10 +91,14 @@ class Runner {
     for (const script of scripts) {
       if (script.isPause) {
         await this.waitForAllChildrenToComplete()
-      } else {
+      } else if (script.code) {
         this.runScript(script, exitOnError)
+      } else {
+        console.error(`${RNA} ${ERR} Script ${script.name} does not exists.`)
+        this.handleError(exitOnError)
       }
     }
+
     await this.waitForAllChildrenToComplete()
     const duration = Date.now() - timestamp
     console.log(`${RNA} ${LOG} Chain ${msg} completed in ${duration} ms.`)
@@ -109,13 +113,13 @@ class Runner {
 
   // Spawn child process.
   async runScript (script, exitOnError) {
-    const spawnArgs = this.getSpawnArgs(script.code)
+    const [args, shell] = this.getSpawnArgs(script.code)
     return new Promise(resolve => {
       const timestamp = Date.now()
 
       // Spawn child process.
       console.log(`${RNA} ${LOG} Script ${script.name} started.`)
-      const child = spawn(spawnArgs[0], spawnArgs.slice(1))
+      const child = spawn(args[0], args.slice(1), {shell})
 
       // Finalization handling.
       let done
@@ -165,14 +169,16 @@ class Runner {
   getSpawnArgs (cmd) {
     const args = cmd.split(' ')
     const packageName = args[0]
+    let shell = true
 
     // Resolve local package binary.
     if (this.cfg.binaries[packageName]) {
       args[0] = this.cfg.binaries[packageName]
       args.unshift(process.execPath)
+      shell = false
     }
 
-    return args
+    return [args, shell]
   }
 
   //
