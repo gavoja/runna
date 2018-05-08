@@ -13,13 +13,30 @@ const FILE_WATCH_WAIT = 300
 const RNA = chalk.blue('runna')
 const ERR = chalk.red('err')
 const LOG = chalk.green('log')
+const HELP = `
+Usage:
+  runna <chain> [OPTIONS]
+
+Options:
+  -f <flavors>             Enable flavors; a comma separated list.
+  -w [<path_to_watch>]     Default is current.
+`
 
 class Runner {
   async main () {
+    const version = this.getJson(path.join(__dirname, 'package.json')).version
+    console.log(`Runna version ${version}.`)
+
+    if (process.argv.length < 3) {
+      console.log(HELP)
+      process.exit(0)
+    }
+
     const chain = process.argv[2]
     const args = minimist(process.argv.slice(3))
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
     const flavors = args.f ? args.f.trim().split(',') : []
+
     this.init(chain, flavors, pathToWatch)
   }
 
@@ -113,17 +130,18 @@ class Runner {
 
       child.on('close', code => {
         if (code !== 0) {
+          console.error(`${RNA} ${ERR} Script ${script.name} exited with error code ${code}.`)
           this.handleError(exitOnError)
-          console.error(`${RNA} ${LOG} Script ${script.name} exited with error code ${code}.`)
         }
         end()
       })
 
       child.on('error', err => {
+        console.error(`${RNA} ${ERR} Script ${script.name} threw an error.`)
         console.error(err)
-        console.error(`${RNA} ${LOG} Script ${script.name} threw an error.`)
         this.handleError(exitOnError)
         end()
+        // throw err
       })
 
       // Capture stdout.
@@ -134,7 +152,6 @@ class Runner {
       // Capture stderr.
       child.stderr.on('data', buf => {
         this.getLogLines(buf, script.name, ERR).forEach(line => process.stderr.write(line))
-        console.error(`${RNA} ${LOG} Script ${script.name} threw an error.`)
         this.handleError(exitOnError)
       })
 
@@ -148,30 +165,11 @@ class Runner {
   getSpawnArgs (cmd) {
     const args = cmd.split(' ')
     const packageName = args[0]
-    const packagePath = path.join(process.cwd(), 'node_modules', packageName)
 
-    // No package.
-    if (!fs.existsSync(packagePath)) {
-      return args
-    }
-
-    // No bin in package.json.
-    const cfg = this.getJson(path.join(packagePath, 'package.json'))
-    if (!cfg.bin) {
-      return args
-    }
-
-    // Prepend with the current node version.
-    const node = process.execPath
-    if (typeof cfg.bin === 'string') {
-      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin)
-      args.unshift(node)
-    } else if (cfg.bin[packageName]) {
-      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin[packageName])
-      args.unshift(node)
-    } else if (Object.keys(cfg.bin).length === 1) {
-      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin[Object.keys(cfg.bin)[0]])
-      args.unshift(node)
+    // Resolve local package binary.
+    if (this.cfg.binaries[packageName]) {
+      args[0] = this.cfg.binaries[packageName]
+      args.unshift(process.execPath)
     }
 
     return args
@@ -215,12 +213,15 @@ class Runner {
 
     // Initialize queue.
     this.queue = []
-    console.log(`${RNA} ${LOG} Watching ${chalk.yellow(pathToWatch)} for changes...`)
+    const waitMsg = `${RNA} ${LOG} Watching ${chalk.yellow(pathToWatch)} for changes...`
+    console.log(waitMsg)
     watch(pathToWatch, localPath => this.queue.push(localPath))
 
     // Main loop.
     while (true) {
-      this.processQueue(rules)
+      if (await this.processQueue(rules)) {
+        console.log(waitMsg)
+      }
       await this.wait(FILE_WATCH_WAIT)
     }
   }
@@ -257,12 +258,13 @@ class Runner {
       }
     }
 
-    // console.log(this.chainsToRun)
+    const any = Object.keys(chainsToRun).length > 0
     for (const [chain, flavors] of Object.entries(chainsToRun)) {
       await this.runChain(chain, Array.from(flavors), false)
     }
 
     this.lock = false
+    return any
   }
 
   //
@@ -271,22 +273,22 @@ class Runner {
 
   killChildren () {
     for (const child of Object.values(this.children)) {
-      child.kill('SIGINT')
+      child.pid && child.kill('SIGINT')
     }
   }
 
   handleError (exitOnError) {
+    process.exitCode = 1
     if (exitOnError) {
+      console.log(`${RNA} ${LOG} Shutting down.\n`)
       this.killChildren()
       process.exit(1)
     }
-
-    process.exitCode = 1
   }
 
   handleExit () {
     process.on('SIGINT', () => {
-      console.log(`${RNA} ${LOG} Shutting down.`)
+      console.log(`${RNA} ${LOG} Shutting down.\n`)
       this.killChildren()
       process.exit()
     })
@@ -300,10 +302,37 @@ class Runner {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'))
   }
 
+  resolveLocalBinaries (cfg) {
+    cfg.binaries = {}
+    const deps = [].concat(Object.keys(cfg.dependencies || []), Object.keys(cfg.devDependencies || []))
+    for (const packageName of deps) {
+      const packagePath = path.join(process.cwd(), 'node_modules', packageName)
+      if (!fs.existsSync(packagePath)) {
+        continue
+      }
+
+      const packageCfg = this.getJson(path.join(packagePath, 'package.json'))
+      if (!packageCfg.bin) {
+        continue
+      }
+
+      if (typeof packageCfg.bin === 'string') {
+        cfg.binaries[packageName] = path.join(packagePath, packageCfg.bin)
+        continue
+      }
+
+      for (const [binName, binPath] of Object.entries(packageCfg.bin)) {
+        cfg.binaries[binName] = path.join(packagePath, binPath)
+      }
+    }
+
+    return cfg
+  }
+
   getCfg () {
     const cfg = this.getJson(path.join(process.cwd(), 'package.json'))
     cfg.flavors = cfg.flavors || {}
-    return cfg
+    return this.resolveLocalBinaries(cfg)
   }
 
   getLogLines (buf, name, log) {

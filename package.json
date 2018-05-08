@@ -41,9 +41,9 @@
   "scripts": {
     "clean": "rimraf ./test/dist",
     "create-dirs": "mkdirp ./test/dist/$FLV",
-    "build:css": "postcss-cli --use autoprefixer -o ./test/dist/$FLV/index.css ./test/src/$FLV/index.css",
-    "build:css::red": "postcss-cli --use autoprefixer -o ./test/dist/red/index.css ./test/src/red/index.css",
-    "build:css::blue": "postcss-cli --use autoprefixer -o ./test/dist/blue/index.css ./test/src/blue/index.css",
+    "build:css": "postcss --use autoprefixer -o ./test/dist/$FLV/index.css ./test/src/$FLV/index.css",
+    "build:css::red": "postcss --use autoprefixer -o ./test/dist/red/index.css ./test/src/red/index.css",
+    "build:css::blue": "postcss --use autoprefixer -o ./test/dist/blue/index.css ./test/src/blue/index.css",
     "build:js": "browserify ./test/src/$FLV/index.js -o ./test/dist/$FLV/index.js -t [ babelify --presets [ babel-preset-env ] ]",
     "build:js::red": "browserify ./test/src/red/index.js -o ./test/dist/red/index.js -t [ babelify --presets [ babel-preset-env ] ]",
     "build:js::blue": "browserify ./test/src/blue/index.js -o ./test/dist/blue/index.js -t [ babelify --presets [ babel-preset-env ] ]",
