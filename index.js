@@ -19,8 +19,8 @@ class Runner {
     const chain = process.argv[2]
     const args = minimist(process.argv.slice(3))
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
-    const flavours = args.f ? args.f.trim().split(',') : ['']
-    this.init(chain, flavours, pathToWatch)
+    const flavors = args.f ? args.f.trim().split(',') : []
+    this.init(chain, flavors, pathToWatch)
   }
 
   async init (chain, flavors, pathToWatch) {
@@ -84,6 +84,7 @@ class Runner {
   }
 
   async waitForAllChildrenToComplete () {
+    console.log(`${RNA} ${LOG} Waiting for all running scripts to complete...`)
     while (Object.keys(this.children).length !== 0) {
       await this.wait(CHILD_EXIT_WAIT)
     }
@@ -111,12 +112,16 @@ class Runner {
       }
 
       child.on('close', code => {
-        code !== 0 && this.handleError(exitOnError)
+        if (code !== 0) {
+          this.handleError(exitOnError)
+          console.error(`${RNA} ${LOG} Script ${script.name} exited with error code ${code}.`)
+        }
         end()
       })
 
       child.on('error', err => {
         console.error(err)
+        console.error(`${RNA} ${LOG} Script ${script.name} threw an error.`)
         this.handleError(exitOnError)
         end()
       })
@@ -128,8 +133,9 @@ class Runner {
 
       // Capture stderr.
       child.stderr.on('data', buf => {
-        this.handleError(exitOnError)
         this.getLogLines(buf, script.name, ERR).forEach(line => process.stderr.write(line))
+        console.error(`${RNA} ${LOG} Script ${script.name} threw an error.`)
+        this.handleError(exitOnError)
       })
 
       // Memorize.
@@ -143,16 +149,29 @@ class Runner {
     const args = cmd.split(' ')
     const packageName = args[0]
     const packagePath = path.join(process.cwd(), 'node_modules', packageName)
+
+    // No package.
     if (!fs.existsSync(packagePath)) {
       return args
     }
 
+    // No bin in package.json.
     const cfg = this.getJson(path.join(packagePath, 'package.json'))
-    if (cfg.bin && Object.keys(cfg.bin).includes(packageName)) {
-      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin[packageName])
-      // TODO: Get current Node.js location.
-      args.unshift('node')
+    if (!cfg.bin) {
       return args
+    }
+
+    // Prepend with the current node version.
+    const node = process.execPath
+    if (typeof cfg.bin === 'string') {
+      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin)
+      args.unshift(node)
+    } else if (cfg.bin[packageName]) {
+      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin[packageName])
+      args.unshift(node)
+    } else if (Object.keys(cfg.bin).length === 1) {
+      args[0] = path.join(process.cwd(), 'node_modules', packageName, cfg.bin[Object.keys(cfg.bin)[0]])
+      args.unshift(node)
     }
 
     return args
@@ -179,7 +198,7 @@ class Runner {
     const rules = []
     for (const [chain, patterns] of Object.entries(this.cfg.observe)) {
       for (let pattern of patterns) {
-        // Align with directory structure to get a correct match later.
+        // Align with directory structure and normalize slashes.
         pattern = path.resolve(pathToWatch, pattern).replace(/\\/g, '/')
 
         // Non-flavoured pattern means all the flavors apply.
@@ -196,7 +215,7 @@ class Runner {
 
     // Initialize queue.
     this.queue = []
-    console.log(`${RNA} ${LOG} Watching for changes in ${chalk.yellow(pathToWatch)} ...`)
+    console.log(`${RNA} ${LOG} Watching ${chalk.yellow(pathToWatch)} for changes...`)
     watch(pathToWatch, localPath => this.queue.push(localPath))
 
     // Main loop.
@@ -213,7 +232,7 @@ class Runner {
 
     this.lock = true
 
-    // Dequeue items.
+    // Dequeue items and normalize slashes.
     const paths = Array.from(new Set(this.queue.splice(0))).map(p => p.replace(/\\/g, '/'))
 
     // Iterate over changes and look for a match.
