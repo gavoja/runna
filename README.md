@@ -38,8 +38,6 @@ scripts: {
 
 ```json
 scripts: {
-  ...
-
   "build": "runna \"clean - create-dist-dir - build:js copy:html\"",
 }
 ```
@@ -70,13 +68,11 @@ The development mode allows triggering chain upon a file change. To enable watch
 
 ```json
 scripts: {
-  ...
-
   "develop": "runna \"+serve clean - create-dist-dir - build:js copy:html - serve:reload\"" -w,
 }
 ```
 
-The `+` symbol before a script indicates, that the script should be run in the backgroud. Waiting for all previous tasks to complete with `-` igonres all background scripts automatically.
+The `+` symbol before a script name indicates, that the script should be run in the backgroud. Waiting for all previous tasks to complete with `-` igonres all background scripts automatically.
 
 Now, let's define our observe rules like so:
 
@@ -91,7 +87,7 @@ observe: {
 }
 ```
 
-Each rule is a chain that gets executed whenever a file changes that matches one of the patterns in the array. Patterns must be relative to the current working directory, or the location specified as a `-w <path_to_watch>` parameter. The watching leverages `recursive` flag of `fs.watch()`, which greatly improves the performance on Windows and OS X.
+Each rule is a chain that is executed whenever a file changes that matches one of the patterns in the array. Patterns must be relative to the current working directory, or the location specified as a `-w <path_to_watch>` parameter. The watching leverages `recursive` flag of `fs.watch()`, which greatly improves the performance on Windows and OS X.
 
 ## Flavours
 
@@ -99,8 +95,6 @@ Flavours are a concept that allows reusing scripts for different sub-projects. L
 
 ```json
 scripts: {
-  ...
-
   "build:js": "browserify ./src/$FLV/index.js -o ./dist/$FLV/index.js -t [ babelify --presets [ babel-preset-env ] ]",
 }
 ```
@@ -109,8 +103,6 @@ Note the `$FLV` placeholder - it's presence automatically enables flavor based b
 Let's update our `develop` chain to support flavors. To do so, simply add `-f` parameter:
 ```json
 scripts: {
-  ...
-
   "develop": "runna \"+serve clean - create-dist-dir - build:js copy:html - serve:reload\"" -w -f red,blue,
 }
 ```
@@ -128,4 +120,4 @@ observe: {
 
 ```
 
-Now, when a file changes on a path `src/blue/*.js`, the `build:js` script will be run only in the `blue` flavor. The `$FLV` placeholder will be replaced by the actual folder value.
+Now, when a file changes on a path `src/blue/*.js`, the `build:js` script will be run only in the `blue` flavor. The `$FLV` placeholder will be replaced with the actual folder value.
