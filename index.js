@@ -86,8 +86,6 @@ class Runner {
       }
     }
 
-    console.log(scripts)
-
     // Run all the scripts in a chain.
     let msg = flavors.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(flavors)}` : chalk.magenta(chain)
 

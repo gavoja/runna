@@ -123,5 +123,5 @@ observe: {
 
 Notes:
 * When a file changes on the path matching `src/blue/*.js`, the `build:js` script will be run only with the `blue` flavor. The `$FLV` placeholder will be replaced with the actual folder name.
-* When a file changes on the path matching `src/foo/**/*.js`, the `build:js` script will be run with all flavors provided.
+* When a file changes on the path matching `src/foo/**/*.js`, the `build:js` script will be run with all flavors provided (in this case `red` and `blue`).
 * If no flavors are provided with `-f` option, all flavored scripts are ignored.
