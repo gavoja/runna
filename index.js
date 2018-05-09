@@ -43,8 +43,6 @@ class Runner {
   }
 
   async init (chain, flavors, pathToWatch) {
-    this.handleExit()
-
     this.cfg = this.getCfg()
     this.queue = []
     this.children = {}
@@ -108,13 +106,16 @@ class Runner {
 
   async waitForAllChildrenToComplete () {
     console.log(`${RNA} ${LOG} Waiting for all running scripts to complete...`)
-    while (Object.keys(this.children).length !== 0) {
+    // We need to exclude background scripts.
+    while (Object.values(this.children).filter(c => !c.isBackground).length !== 0) {
       await this.wait(CHILD_EXIT_WAIT)
     }
   }
 
   // Spawn child process.
   async runScript (script, exitOnError) {
+    // Scripts running in the background should not exit on error.
+    // exitOnError = script.isBackground ? false : exitOnError
     const [args, shell] = this.getSpawnArgs(script.code)
     return new Promise(resolve => {
       const timestamp = Date.now()
@@ -147,7 +148,6 @@ class Runner {
         console.error(err)
         this.handleError(exitOnError)
         end()
-        // throw err
       })
 
       // Capture stdout.
@@ -158,29 +158,30 @@ class Runner {
       // Capture stderr.
       child.stderr.on('data', buf => {
         this.getLogLines(buf, script.name, ERR).forEach(line => process.stderr.write(line))
-        this.handleError(exitOnError)
+        // Background processes can log errors as much as they want.
+        !script.isBackground && this.handleError(exitOnError)
       })
 
       // Memorize.
-      if (!script.isBackground) {
-        this.children[child.pid] = child
-      }
+      this.children[child.pid] = {...script, process: child}
     })
   }
 
   getSpawnArgs (cmd) {
     const args = cmd.split(' ')
     const packageName = args[0]
-    let shell = true
+    // let shell = true
 
     // Resolve local package binary.
     if (this.cfg.binaries[packageName]) {
       args[0] = this.cfg.binaries[packageName]
       args.unshift(process.execPath)
-      shell = false
+      // shell = false
     }
 
-    return [args, shell]
+    // Don't use shell - until I can figure out how to kill the entire process tree.
+    // The downside is that it may not be possible to run global bins :(.
+    return [args, false]
   }
 
   //
@@ -279,27 +280,12 @@ class Runner {
   // Exit handling.
   //
 
-  killChildren () {
-    for (const child of Object.values(this.children)) {
-      child.pid && child.kill('SIGINT')
-    }
-  }
-
   handleError (exitOnError) {
-    process.exitCode = 1
     if (exitOnError) {
-      console.log(`${RNA} ${LOG} Shutting down.\n`)
-      this.killChildren()
+      console.log(`${RNA} ${ERR} Shutting down.`)
+      process.exitCode = 1
       process.exit(1)
     }
-  }
-
-  handleExit () {
-    process.on('SIGINT', () => {
-      console.log(`${RNA} ${LOG} Shutting down.\n`)
-      this.killChildren()
-      process.exit()
-    })
   }
 
   //

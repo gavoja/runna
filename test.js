@@ -7,7 +7,7 @@ const assert = require('assert')
 
 const DIST = path.resolve(__dirname, 'test', 'dist')
 const SRC = path.resolve(__dirname, 'test', 'src')
-const TIMEOUT = 5000
+const TIMEOUT = 10000
 const STEP = 100
 
 // Serously, this should be the default.

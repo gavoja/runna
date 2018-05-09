@@ -39,6 +39,7 @@ setTimeout(() => {
 
   if (args.background) {
     console.log('Chillin\' in the background...')
+    console.error('...and sometimes log an error.')
     setInterval(() => {}, 1000)
   }
 }, parseInt(args.delay || 0, 10))
