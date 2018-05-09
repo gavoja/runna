@@ -3,11 +3,10 @@
 const chalk = require('chalk')
 const spawn = require('child_process').spawn
 const fs = require('fs')
-const mm = require('micromatch')
 const path = require('path')
 const watch = require('simple-watcher')
-const subarg = require('subarg'
-)
+const subarg = require('subarg')
+const globToRegExp = require('glob-to-regexp')
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
 const RNA = chalk.blue('runna')
@@ -21,6 +20,9 @@ Options:
   -f <flavors>             Enable flavors; a comma separated list.
   -w [<path-to-watch>]     Default is current.
 `
+
+// Serously, this should be the default.
+process.on('unhandledRejection', reason => console.error(reason))
 
 class Runner {
   async main () {
@@ -83,6 +85,8 @@ class Runner {
         scripts.push({name: `${name}::${flavor}`, isBackground, isPause, code: code.replace(/\$FLV/g, flavor)})
       }
     }
+
+    console.log(scripts)
 
     // Run all the scripts in a chain.
     let msg = flavors.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(flavors)}` : chalk.magenta(chain)
@@ -245,7 +249,7 @@ class Runner {
     // Iterate over changes and look for a match.
     const chainsToRun = {}
     for (const rule of rules) {
-      const match = mm.match(paths, rule.pattern)
+      const match = this.match(paths, rule.pattern)
       if (match.length === 0) {
         continue
       }
@@ -348,6 +352,16 @@ class Runner {
 
   async wait (ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  match (paths, pattern) {
+    const result = []
+    const re = globToRegExp(pattern)
+    for (const path of paths) {
+      re.test(path) && result.push(path)
+    }
+
+    return result
   }
 }
 

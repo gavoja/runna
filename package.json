@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -21,50 +21,33 @@
   },
   "dependencies": {
     "chalk": "^2.4.1",
-    "micromatch": "^3.1.10",
+    "glob-to-regexp": "^0.4.0",
     "simple-watcher": "^3.0.0",
     "subarg": "^1.0.0"
   },
-  "devDependencies": {
-    "babel": "^6.23.0",
-    "babel-core": "^6.26.3",
-    "babel-preset-env": "^1.6.1",
-    "babelify": "^8.0.0",
-    "browserify": "^16.2.0",
-    "runna-webserver": "^0.1.2"
-  },
   "scripts": {
-    "clean": "rimraf ./test/dist",
-    "create-dirs": "mkdirp ./test/dist/$FLV",
-    "build:css": "postcss --use autoprefixer -o ./test/dist/$FLV/index.css ./test/src/$FLV/index.css",
-    "build:css::red": "postcss --use autoprefixer -o ./test/dist/red/index.css ./test/src/red/index.css",
-    "build:css::blue": "postcss --use autoprefixer -o ./test/dist/blue/index.css ./test/src/blue/index.css",
-    "build:js": "browserify ./test/src/$FLV/index.js -o ./test/dist/$FLV/index.js -t [ babelify --presets [ babel-preset-env ] ]",
-    "build:js::red": "browserify ./test/src/red/index.js -o ./test/dist/red/index.js -t [ babelify --presets [ babel-preset-env ] ]",
-    "build:js::blue": "browserify ./test/src/blue/index.js -o ./test/dist/blue/index.js -t [ babelify --presets [ babel-preset-env ] ]",
-    "build:html": "copyfiles --flat ./test/src/base/index.html ./test/dist/$FLV",
-    "break:log": "node ./test/tester.js --error-log",
-    "break:throw": "node ./test/tester.js --error-throw",
-    "break:exit": "node ./test/tester.js --error-exit",
-    "serve": "runna-webserver -w ./test/dist",
-    "serve:stop": "runna-webserver -x",
-    "serve:reload": "runna-webserver -r",
-    "build": "node index.js [ clean - create-dirs - build:html build:css build:js ] -f blue,red",
-    "build:break:log": "node index.js [ clean - create-dirs - build:html build:css build:js break:log ] -f blue,red",
-    "build:break:throw": "node index.js [ clean - create-dirs - build:html build:css build:js break:throw ] -f blue,red",
-    "build:break:exit": "node index.js [ clean - create-dirs - build:html build:css build:js break:exit ] -f blue,red",
-    "dev": "node index.js [ +serve clean - create-dirs - build:html build:css build:js - serve:reload ] -w .. -f blue,red"
+    "test": "node test.js",
+    "clean": "node test/tester.js --clean",
+    "generate:flavor": "node test/tester.js --generate item.$FLV --delay 100",
+    "generate:plain": "node test/tester.js --generate item.plain --delay 200",
+    "fail:log": "node ./test/tester.js --error log",
+    "fail:throw": "node ./test/tester.js --error throw",
+    "fail:exit": "node ./test/tester.js --error exit",
+    "background": "node test/tester.js --background",
+    "build:fail:log": "node index.js [ clean - generate:plain generate:flavor fail:log ] -f blue,red",
+    "build:fail:throw": "node index.js [ clean - generate:plain generate:flavor fail:throw ] -f blue,red",
+    "build:fail:exit": "node index.js [ clean - generate:plain generate:flavor fail:exit ] -f blue,red",
+    "build": "node index.js [ clean - generate:plain generate:flavor ] -f blue,red",
+    "build:noflavors": "node index.js [ clean - generate:plain generate:flavor ]",
+    "dev": "node index.js [ +background clean - generate:plain generate:flavor ] -w .. -f blue,red"
   },
   "observe": {
-    "build:js - serve:reload": [
-      "runna/test/src/base/*.js",
-      "runna/test/src/$FLV/*.js"
+    "generate:flavor": [
+      "runna/test/src/trigger",
+      "runna/test/src/$FLV/trigger"
     ],
-    "build:css - serve:reload": [
-      "runna/test/src/$FLV/*.css"
-    ],
-    "build:html - serve:reload": [
-      "runna/test/src/base/*.html"
+    "generate:plain": [
+      "runna/test/src/trigger.plain"
     ]
   }
 }
