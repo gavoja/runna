@@ -30,7 +30,7 @@ scripts: {
   "copy:html": "copyfiles --flat ./src/index.html ./dist",
   "serve": "runna-webserver -w ./dist",
   "serve:stop": "runna-webserver -x",
-  "serve:reload": "runna-webserver -r",
+  "serve:reload": "runna-webserver -r"
 }
 ```
 
@@ -38,7 +38,7 @@ scripts: {
 
 ```json
 scripts: {
-  "build": "runna [ clean - create-dist-dir - build:js copy:html ]",
+  "build": "runna [ clean - create-dist-dir - build:js copy:html ]"
 }
 ```
 
@@ -87,23 +87,25 @@ observe: {
 }
 ```
 
-Each rule is a chain that is executed whenever a file changes that matches one of the patterns in the array. Patterns must be relative to the current working directory, or the location specified as a `-w <path_to_watch>` parameter. The watching leverages `recursive` flag of `fs.watch()`, which greatly improves the performance on Windows and OS X.
+Each rule is a chain that is executed whenever a file changes that matches one of the patterns in the array. Patterns must be relative to the current working directory, or the location specified as a `-w <path-to-watch>` parameter.
+
+Watching leverages `recursive` flag of `fs.watch()`, which greatly improves performance on Windows and OS X compared to packages based on [Chokidar](https://github.com/paulmillr/chokidar) (e.g. [onchange](https://github.com/Qard/onchange) or [watchify](https://github.com/browserify/watchify)), especially for large projects.
 
 ## Flavours
 
-Flavours are a concept that allows reusing scripts for different sub-projects. Let's define a flavor based script like so:
+Flavours is a concept that allows reusing scripts for different sub-projects, thus reducting boilerplate. Let's define a flavor based script like so:
 
 ```json
 scripts: {
-  "build:js": "browserify ./src/$FLV/index.js -o ./dist/$FLV/index.js -t [ babelify --presets [ babel-preset-env ] ]",
+  "build:js": "browserify ./src/$FLV/index.js -o ./dist/$FLV/index.js -t [ babelify --presets [ babel-preset-env ] ]"
 }
 ```
-Note the `$FLV` placeholder - it's presence automatically enables flavor based behavior.
+Note the `$FLV` placeholder - its presence automatically enables flavor based behavior.
 
 Let's update our `develop` chain to support flavors. To do so, simply add `-f` parameter:
 ```json
 scripts: {
-  "develop": "runna [ +serve clean - create-dist-dir - build:js copy:html - serve:reload ] -w -f red,blue,
+  "develop": "runna [ +serve clean - create-dist-dir - build:js copy:html - serve:reload ] -w -f red,blue"
 }
 ```
 
@@ -118,7 +120,6 @@ observe: {
     "src/foo/**/*.js"
   ]
 }
-
 ```
 
 Notes:
