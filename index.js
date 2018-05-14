@@ -7,6 +7,7 @@ const path = require('path')
 const watch = require('simple-watcher')
 const subarg = require('subarg')
 const globToRegExp = require('glob-to-regexp')
+
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
 const RNA = chalk.blue('runna')
@@ -17,7 +18,7 @@ Usage:
   runna <chain> [options]
 
 Options:
-  -f <flavors>             Enable flavors; a comma separated list.
+  -p <projects>            Run with projects; a comma separated list.
   -w [<path-to-watch>]     Default is current.
 `
 
@@ -37,18 +38,18 @@ class Runner {
 
     const chain = args['_'][0]['_'].join(' ')
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
-    const flavors = args.f ? args.f.trim().split(',') : []
+    const projects = args.p ? args.p.trim().split(',') : []
 
-    this.init(chain, flavors, pathToWatch)
+    this.init(chain, projects, pathToWatch)
   }
 
-  async init (chain, flavors, pathToWatch) {
+  async init (chain, projects, pathToWatch) {
     this.cfg = this.getCfg()
     this.queue = []
     this.children = {}
 
-    await this.runChain(chain, flavors)
-    pathToWatch && this.observe(pathToWatch, flavors)
+    await this.runChain(chain, [], projects)
+    pathToWatch && this.observe(pathToWatch, projects)
   }
 
   //
@@ -56,14 +57,14 @@ class Runner {
   //
 
   // chain ~ '+foo - bar baz'
-  async runChain (chain, flavors, exitOnError = true) {
+  async runChain (chain, files = [], projects = [], exitOnError = true) {
+    files.length === 0 && files.push('')
     const timestamp = Date.now()
-
     // Get scripts: [{
-    //   name: 'some:script'
+    //   name: 'some:script::variant:file.js'
     //   isBackground: false,
     //   isPause: false,
-    //   code: 'node some-script.js -f flavor1'
+    //   code: 'node some-script.js -p red'
     // }]
     const scripts = []
     for (const text of chain.split(' ')) {
@@ -72,20 +73,47 @@ class Runner {
       const isPause = text === '-'
       const code = this.cfg.scripts[name]
 
-      // Add non-flavoured script.
-      if (!code || !code.includes('$FLV')) {
+      if (!code && !isPause) {
+        console.error(`${RNA} ${ERR} Script ${name} does not exist.`)
+        this.handleError(exitOnError)
+        continue
+      }
+
+      // Plain script.
+      if (isPause || (!code.includes('$PROJ') && !code.includes('$FILE'))) {
         scripts.push({name, isBackground, isPause, code})
         continue
       }
 
-      // Add flavoured scripts.
-      for (const flavor of flavors) {
-        scripts.push({name: `${name}::${flavor}`, isBackground, isPause, code: code.replace(/\$FLV/g, flavor)})
+      // Flavored script.
+      if (code.includes('$PROJ') && !code.includes('$FILE')) {
+        for (const project of projects) {
+          scripts.push({name: `${name}::${project}`, isBackground, isPause, code: code.replace(/\$PROJ/g, project)})
+        }
+      }
+
+      // File script.
+      if (!code.includes('$PROJ') && code.includes('$FILE')) {
+        for (const file of files) {
+          const suffix = file ? `::${path.basename(file)}` : ''
+          scripts.push({name: `${name}${suffix}`, isBackground, isPause, code: code.replace(/\$FILE/g, file)})
+        }
+      }
+
+      // Flavoured file script.
+      if (code.includes('$PROJ') && code.includes('$FILE')) {
+        for (const project of projects) {
+          const projCode = code.replace(/\$PROJ/g, project)
+          for (const file of files) {
+            const suffix = file ? `:${path.basename(file)}` : ''
+            scripts.push({name: `${name}::${project}${suffix}`, isBackground, isPause, code: projCode.replace(/\$FILE/g, file)})
+          }
+        }
       }
     }
 
     // Run all the scripts in a chain.
-    let msg = flavors.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(flavors)}` : chalk.magenta(chain)
+    let msg = projects.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(projects)}` : chalk.magenta(chain)
 
     console.log(`${RNA} ${LOG} Chain ${msg} started.`)
     for (const script of scripts) {
@@ -188,19 +216,19 @@ class Runner {
   // Watching.
   //
 
-  async observe (pathToWatch, flavors) {
+  async observe (pathToWatch, projects) {
     // Get rules: [{
     //   chain: '+foo - bar baz'
-    //   pattern: 'c:/absolute/path/to/flavor1/**'
-    //   flavors: ['flavor1']
+    //   pattern: 'c:/absolute/path/to/red/**'
+    //   projects: ['red']
     // },{
     //   chain: '+foo - bar baz'
-    //   pattern: 'c:/absolute/path/to/flavor2/**'
-    //   flavors: [flavor2']
+    //   pattern: 'c:/absolute/path/to/blue/**'
+    //   projects: [blue']
     // },{
     //   chain: '+foo - bar baz'
     //   pattern: 'c:/absolute/path/to/base/**'
-    //   flavors: ['flavor1', 'flavor2']
+    //   projects: ['red', 'blue']
     // }]
     const rules = []
     for (const [chain, patterns] of Object.entries(this.cfg.observe)) {
@@ -208,14 +236,14 @@ class Runner {
         // Align with directory structure and normalize slashes.
         pattern = path.resolve(pathToWatch, pattern).replace(/\\/g, '/')
 
-        // Non-flavoured pattern means all the flavors apply.
-        if (!pattern.includes('$FLV')) {
-          rules.push({chain, pattern, flavors})
+        // Non-project pattern means all the projects apply.
+        if (!pattern.includes('$PROJ')) {
+          rules.push({chain, pattern, projects})
           continue
         }
-        // Add rule for each flavor separately.
-        for (const flavor of flavors) {
-          rules.push({chain, pattern: pattern.replace(/\$FLV/g, flavor), flavors: [flavor]})
+        // Add rule for each project separately.
+        for (const project of projects) {
+          rules.push({chain, pattern: pattern.replace(/\$PROJ/g, project), projects: [project]})
         }
       }
     }
@@ -246,30 +274,36 @@ class Runner {
     const paths = Array.from(new Set(this.queue.splice(0))).map(p => p.replace(/\\/g, '/'))
 
     // Iterate over changes and look for a match.
-    const chainsToRun = {}
+    const chainsToRun = {} // {projects: <>, files: []}
+    const loggedChanges = new Set()
     for (const rule of rules) {
       const match = this.match(paths, rule.pattern)
       if (match.length === 0) {
         continue
       }
 
+      // Add entry if it does not exist.
+      chainsToRun[rule.chain] = chainsToRun[rule.chain] || {projects: new Set(), files: new Set()}
+
+      // Add projects to entry.
+      for (const project of rule.projects) {
+        chainsToRun[rule.chain].projects.add(project)
+      }
+
+      // Add files to entry.
       for (const m of match) {
-        console.log(`${RNA} ${LOG} Changed ${chalk.yellow(path.resolve(m))}`)
-      }
-
-      if (!chainsToRun[rule.chain]) {
-        chainsToRun[rule.chain] = new Set(rule.flavors)
-        continue
-      }
-
-      for (const flavor of rule.flavors) {
-        chainsToRun[rule.chain].add(flavor)
+        // Make sure each change that triggers a script is logged only once.
+        if (!loggedChanges[m]) {
+          console.log(`${RNA} ${LOG} Changed ${chalk.yellow(path.resolve(m))}`)
+          loggedChanges.add(m)
+        }
+        chainsToRun[rule.chain].files.add(m)
       }
     }
 
     const any = Object.keys(chainsToRun).length > 0
-    for (const [chain, flavors] of Object.entries(chainsToRun)) {
-      await this.runChain(chain, Array.from(flavors), false)
+    for (const [chain, item] of Object.entries(chainsToRun)) {
+      await this.runChain(chain, Array.from(item.files), Array.from(item.projects), false)
     }
 
     this.lock = false
@@ -325,7 +359,7 @@ class Runner {
 
   getCfg () {
     const cfg = this.getJson(path.join(process.cwd(), 'package.json'))
-    cfg.flavors = cfg.flavors || {}
+    cfg.projects = cfg.projects || {}
     return this.resolveLocalBinaries(cfg)
   }
 

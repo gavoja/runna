@@ -32,7 +32,8 @@ setTimeout(() => {
 
   if (args.generate) {
     console.log('Generating:', args.generate)
-    const filePath = path.resolve(__dirname, 'dist', args.generate)
+    const fileName = path.basename(args.generate)
+    const filePath = path.resolve(__dirname, 'dist', fileName)
     fs.writeFileSync(filePath)
     process.exit()
   }

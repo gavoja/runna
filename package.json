@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "2.0.3",
+  "version": "2.1.0",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -28,26 +28,35 @@
   "scripts": {
     "test": "node test.js",
     "clean": "node test/tester.js --clean",
-    "generate:flavor": "node test/tester.js --generate item.$FLV --delay 100",
-    "generate:plain": "node test/tester.js --generate item.plain --delay 200",
+    "generate:project": "node test/tester.js --generate $PROJ --delay 50",
+    "generate:plain": "node test/tester.js --generate plain --delay 100",
+    "generate:file": "node test/tester.js --generate $FILE --delay 150",
+    "generate:mix": "node test/tester.js --generate $FILE.$PROJ --delay 200",
     "fail:log": "node ./test/tester.js --error log",
     "fail:throw": "node ./test/tester.js --error throw",
     "fail:exit": "node ./test/tester.js --error exit",
     "background": "node test/tester.js --background",
-    "build:fail:log": "node index.js [ clean - generate:plain generate:flavor fail:log ] -f blue,red",
-    "build:fail:throw": "node index.js [ clean - generate:plain generate:flavor fail:throw ] -f blue,red",
-    "build:fail:exit": "node index.js [ clean - generate:plain generate:flavor fail:exit ] -f blue,red",
-    "build": "node index.js [ clean - generate:plain generate:flavor ] -f blue,red",
-    "build:noflavors": "node index.js [ clean - generate:plain generate:flavor ]",
-    "dev": "node index.js [ +background clean - generate:plain generate:flavor ] -w .. -f blue,red"
+    "build:fail:log": "node index.js [ clean - generate:plain generate:project fail:log ] -p blue,red",
+    "build:fail:throw": "node index.js [ clean - generate:plain generate:project fail:throw ] -p blue,red",
+    "build:fail:exit": "node index.js [ clean - generate:plain generate:project fail:exit ] -p blue,red",
+    "build": "node index.js [ clean - generate:plain generate:project ] -p blue,red",
+    "build:noprojects": "node index.js [ clean - generate:project - generate:plain ]",
+    "dev": "node index.js [ +background clean ] -w .. -p blue,red"
   },
   "observe": {
-    "generate:flavor": [
-      "runna/test/src/trigger",
-      "runna/test/src/$FLV/trigger"
+    "generate:project": [
+      "runna/test/triggers/project",
+      "runna/test/triggers/$PROJ/project"
     ],
     "generate:plain": [
-      "runna/test/src/trigger.plain"
+      "runna/test/triggers/plain"
+    ],
+    "generate:file": [
+      "runna/test/triggers/file"
+    ],
+    "generate:mix": [
+      "runna/test/triggers/$PROJ/mix",
+      "runna/test/triggers/mix"
     ]
   }
 }

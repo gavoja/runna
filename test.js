@@ -6,8 +6,8 @@ const path = require('path')
 const assert = require('assert')
 
 const DIST = path.resolve(__dirname, 'test', 'dist')
-const SRC = path.resolve(__dirname, 'test', 'src')
-const TIMEOUT = 10000
+const TRIGGERS = path.resolve(__dirname, 'test', 'triggers')
+const TIMEOUT = 5000
 const STEP = 100
 
 // Serously, this should be the default.
@@ -30,7 +30,13 @@ async function wait4 (callback, expectedResult, message) {
 
 async function exec (command) {
   return new Promise(resolve => {
-    cp.exec(command, (err, stdout, stderr) => err ? resolve(false) : resolve(true))
+    cp.exec(command, (err, stdout, stderr) => {
+      if (err) {
+        resolve(false)
+        return
+      }
+      resolve(true)
+    })
   })
 }
 
@@ -40,6 +46,18 @@ function clean () {
   }
 }
 
+function touch (file) {
+  fs.closeSync(fs.openSync(file, 'w'))
+}
+
+async function exist (...files) {
+  await wait4(() => files.every(f => fs.existsSync(f)), true, `Expected files to exist: ${files}`)
+}
+
+async function notExist (...files) {
+  await wait4(() => files.every(f => !fs.existsSync(f)), true, `Expected files not to exist: ${files}`)
+}
+
 // -----------------------------------------------------------------------------
 // Actual test below
 // -----------------------------------------------------------------------------
@@ -47,13 +65,24 @@ function clean () {
 async function test () {
   console.log('Running tests...')
 
-  const red = path.resolve(DIST, 'item.red')
-  const blue = path.resolve(DIST, 'item.blue')
-  const plain = path.resolve(DIST, 'item.plain')
-  const triggerRed = path.resolve(SRC, 'red', 'trigger')
-  const triggerBlue = path.resolve(SRC, 'blue', 'trigger')
-  const triggerPlain = path.resolve(SRC, 'trigger.plain')
-  const trigger = path.resolve(SRC, 'trigger')
+  const items = {
+    red: path.resolve(DIST, 'red'),
+    blue: path.resolve(DIST, 'blue'),
+    plain: path.resolve(DIST, 'plain'),
+    mixRed: path.resolve(DIST, 'mix.red'),
+    mixBlue: path.resolve(DIST, 'mix.blue')
+  }
+
+  const triggers = {
+    projRed: path.resolve(TRIGGERS, 'red', 'project'),
+    projBlue: path.resolve(TRIGGERS, 'blue', 'project'),
+    mixRed: path.resolve(TRIGGERS, 'red', 'mix'),
+    mixBlue: path.resolve(TRIGGERS, 'blue', 'mix'),
+    mixAll: path.resolve(TRIGGERS, 'mix'),
+    projAll: path.resolve(TRIGGERS, 'project'),
+    plain: path.resolve(TRIGGERS, 'plain')
+  }
+
   let result
 
   //
@@ -63,9 +92,16 @@ async function test () {
   clean()
   console.log('Build')
   await exec('npm run build')
-  assert.strictEqual(fs.existsSync(red), true, 'Expected item.red to exist.')
-  assert.strictEqual(fs.existsSync(blue), true, 'Expected item.blue to exist.')
-  assert.strictEqual(fs.existsSync(plain), true, 'Expected item.plain to exist.')
+  await exist(items.red)
+  await exist(items.blue)
+  await exist(items.plain)
+
+  clean()
+  console.log('Build - no projects')
+  await exec('npm run build:noprojects')
+  await exist(items.plain)
+  await notExist(items.red)
+  await notExist(items.blue)
 
   //
   // Errors
@@ -87,35 +123,44 @@ async function test () {
   // Observe
   //
 
-  // Clean up
   clean()
   console.log('Develop')
   exec('npm run dev')
-  await wait4(() => fs.existsSync(red) && fs.existsSync(blue) && fs.existsSync(plain), true, 'Expected all items to be generated.')
+  await wait(3000) // Ensure watching is enabled.
+
+  console.log('Trigger - red/project')
+  touch(triggers.projRed)
+  await exist(items.red)
   clean()
 
-  // Trigger red.
-  console.log('Trigger - red')
-  fs.closeSync(fs.openSync(triggerRed, 'w'))
-  await wait4(() => fs.existsSync(red) && !fs.existsSync(blue) && !fs.existsSync(plain), true, 'Expected item.red to be generated.')
+  console.log('Trigger - blue/project')
+  touch(triggers.projBlue)
+  await exist(items.blue)
   clean()
 
-  // Trigger blue.
-  console.log('Trigger - blue')
-  fs.closeSync(fs.openSync(triggerBlue, 'w'))
-  await wait4(() => !fs.existsSync(red) && fs.existsSync(blue) && !fs.existsSync(plain), true, 'Expected item.blue to be generated.')
+  console.log('Trigger - red/mix')
+  touch(triggers.mixRed)
+  await exist(items.mixRed)
   clean()
 
-  // Trigger plain.
+  console.log('Trigger - blue/mix')
+  touch(triggers.mixBlue)
+  await exist(items.mixBlue)
+  clean()
+
   console.log('Trigger - plain')
-  fs.closeSync(fs.openSync(triggerPlain, 'w'))
-  await wait4(() => !fs.existsSync(red) && !fs.existsSync(blue) && fs.existsSync(plain), true, 'Expected item.plain to be generated.')
+  touch(triggers.plain)
+  await exist(items.plain)
   clean()
 
-  // Trigger flavred.
-  console.log('Trigger - all flavors')
-  fs.closeSync(fs.openSync(trigger, 'w'))
-  await wait4(() => fs.existsSync(red) && fs.existsSync(blue) && !fs.existsSync(plain), true, 'Expected flavored items to be generated.')
+  console.log('Trigger - project')
+  touch(triggers.projAll)
+  await exist(items.blue, items.red)
+  clean()
+
+  console.log('Trigger - mix')
+  touch(triggers.mixAll)
+  await exist(items.mixBlue, items.mixRed)
   clean()
 
   console.log('All OK.')
