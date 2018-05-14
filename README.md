@@ -108,13 +108,12 @@ It is possible to pass a file path to a script, that triggeted a chain execution
 {
   "scripts": {
     "build:html": "node scripts/build-html $FILE",
-  },
-  "observe"
+  }
 }
 ```
 
 Notes:
-* When in watch mode, the `$FILE` variable will be replaced with the full path (goes via `path.resolve()`) of the file that triggered the chain.
+* When in watch mode, the `$FILE` variable will be replaced with the full path of the file that triggered the chain.
 * When not in watch mode (this also applies to the first run when in watch mode), the `$FILE` will default to blank, so make sure your script handles it correctly (e.g. builds everything if no file is provided).
 
 ### $PROJ variable
