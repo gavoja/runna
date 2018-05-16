@@ -198,17 +198,12 @@ class Runner {
   getSpawnArgs (cmd) {
     const args = cmd.split(' ')
     const packageName = args[0]
-    // let shell = true
 
     // Resolve local package binary.
     if (this.cfg.binaries[packageName]) {
       args[0] = this.cfg.binaries[packageName]
-      args.unshift(process.execPath)
-      // shell = false
     }
 
-    // Don't use shell - until I can figure out how to kill the entire process tree.
-    // The downside is that it may not be possible to run global bins :(.
     return [args, false]
   }
 
@@ -332,25 +327,14 @@ class Runner {
 
   resolveLocalBinaries (cfg) {
     cfg.binaries = {}
-    const deps = [].concat(Object.keys(cfg.dependencies || []), Object.keys(cfg.devDependencies || []))
-    for (const packageName of deps) {
-      const packagePath = path.join(process.cwd(), 'node_modules', packageName)
-      if (!fs.existsSync(packagePath)) {
-        continue
-      }
 
-      const packageCfg = this.getJson(path.join(packagePath, 'package.json'))
-      if (!packageCfg.bin) {
-        continue
-      }
-
-      if (typeof packageCfg.bin === 'string') {
-        cfg.binaries[packageName] = path.join(packagePath, packageCfg.bin)
-        continue
-      }
-
-      for (const [binName, binPath] of Object.entries(packageCfg.bin)) {
-        cfg.binaries[binName] = path.join(packagePath, binPath)
+    const binPath = path.resolve(process.cwd(), 'node_modules', '.bin')
+    for (const script of fs.readdirSync(binPath)) {
+      const scriptPath = path.resolve(binPath, script)
+      if (process.platform === 'win32' && script.endsWith('.cmd')) {
+        cfg.binaries[script.slice(0, -4)] = scriptPath
+      } else {
+        cfg.binaries[script] = path.resolve(binPath, script)
       }
     }
 
