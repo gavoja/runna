@@ -6,7 +6,7 @@ const fs = require('fs')
 const path = require('path')
 const watch = require('simple-watcher')
 const subarg = require('subarg')
-const globToRegExp = require('glob-to-regexp')
+const minimatch = require('minimatch')
 
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
@@ -357,13 +357,7 @@ class Runner {
   }
 
   match (paths, pattern) {
-    const result = []
-    const re = globToRegExp(pattern)
-    for (const path of paths) {
-      re.test(path) && result.push(path)
-    }
-
-    return result
+    return minimatch.match(paths, pattern)
   }
 }
 

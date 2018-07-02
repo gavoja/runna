@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "chalk": "^2.4.1",
-    "glob-to-regexp": "^0.4.0",
+    "minimatch": "^3.0.4",
     "simple-watcher": "^3.0.0",
     "subarg": "^1.0.0"
   },
@@ -46,7 +46,7 @@
   "observe": {
     "generate:project": [
       "runna/test/triggers/project",
-      "runna/test/triggers/$PROJ/project"
+      "runna/test/triggers/$PROJ/**/project"
     ],
     "generate:plain": [
       "runna/test/triggers/plain"

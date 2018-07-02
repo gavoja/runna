@@ -76,6 +76,7 @@ async function test () {
   const triggers = {
     projRed: path.resolve(TRIGGERS, 'red', 'project'),
     projBlue: path.resolve(TRIGGERS, 'blue', 'project'),
+    projSubBlue: path.resolve(TRIGGERS, 'blue', 'sub-folder', 'project'),
     mixRed: path.resolve(TRIGGERS, 'red', 'mix'),
     mixBlue: path.resolve(TRIGGERS, 'blue', 'mix'),
     mixAll: path.resolve(TRIGGERS, 'mix'),
@@ -135,6 +136,11 @@ async function test () {
 
   console.log('Trigger - blue/project')
   touch(triggers.projBlue)
+  await exist(items.blue)
+  clean()
+
+  console.log('Trigger - blue/sub-folder/project')
+  touch(triggers.projSubBlue)
   await exist(items.blue)
   clean()
 
