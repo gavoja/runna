@@ -7,12 +7,10 @@ const path = require('path')
 const watch = require('simple-watcher')
 const subarg = require('subarg')
 const minimatch = require('minimatch')
+const log = require('./lib/log').getInstance()
 
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
-const RNA = chalk.blue('runna')
-const ERR = chalk.red('err')
-const LOG = chalk.green('log')
 const HELP = `
 Usage:
   runna <chain> [options]
@@ -46,7 +44,7 @@ class Runner {
   async init (chain, projects, pathToWatch) {
     this.cfg = this.getCfg()
     this.queue = []
-    this.children = {}
+    this.children = []
 
     await this.runChain(chain, [], projects)
     pathToWatch && this.observe(pathToWatch, projects)
@@ -74,7 +72,7 @@ class Runner {
       const code = this.cfg.scripts[name]
 
       if (!code && !isPause) {
-        console.error(`${RNA} ${ERR} Script ${name} does not exist.`)
+        log.err('runna', `Script ${name} does not exist.`)
         this.handleError(exitOnError)
         continue
       }
@@ -115,27 +113,27 @@ class Runner {
     // Run all the scripts in a chain.
     let msg = projects.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(projects)}` : chalk.magenta(chain)
 
-    console.log(`${RNA} ${LOG} Chain ${msg} started.`)
+    log.dbg('runna', `Chain ${msg} started.`)
     for (const script of scripts) {
       if (script.isPause) {
         await this.waitForAllChildrenToComplete()
       } else if (script.code) {
         this.runScript(script, exitOnError)
       } else {
-        console.error(`${RNA} ${ERR} Script ${script.name} does not exists.`)
+        log.err('runna', `Script ${script.name} does not exists.`)
         this.handleError(exitOnError)
       }
     }
 
     await this.waitForAllChildrenToComplete()
     const duration = Date.now() - timestamp
-    console.log(`${RNA} ${LOG} Chain ${msg} completed in ${duration} ms.`)
+    log.dbg('runna', `Chain ${msg} completed in ${duration} ms.`)
   }
 
   async waitForAllChildrenToComplete () {
-    console.log(`${RNA} ${LOG} Waiting for all running scripts to complete...`)
+    log.dbg('runna', `Waiting for all running scripts to complete...`)
     // We need to exclude background scripts.
-    while (Object.values(this.children).filter(c => !c.isBackground).length !== 0) {
+    while (this.children.filter(c => !c.isBackground).length !== 0) {
       await this.wait(CHILD_EXIT_WAIT)
     }
   }
@@ -149,7 +147,7 @@ class Runner {
       const timestamp = Date.now()
 
       // Spawn child process.
-      console.log(`${RNA} ${LOG} Script ${script.name} started.`)
+      log.dbg('runna', `Script ${script.name} started.`)
       const child = spawn(args[0], args.slice(1), {shell})
 
       // Finalization handling.
@@ -157,42 +155,54 @@ class Runner {
       const end = () => {
         if (!done) {
           let duration = Date.now() - timestamp
-          console.log(`${RNA} ${LOG} Script ${script.name} completed in ${duration} ms.`)
-          delete this.children[child.pid]
+          log.dbg('runna', `Script ${script.name} completed in ${duration} ms.`)
+          this.deleteChild(child.pid)
           done = resolve()
         }
       }
 
       child.on('close', code => {
         if (code !== 0) {
-          console.error(`${RNA} ${ERR} Script ${script.name} exited with error code ${code}.`)
+          log.err('runna', `Script ${script.name} exited with error code ${code}.`)
           this.handleError(exitOnError)
         }
         end()
       })
 
       child.on('error', err => {
-        console.error(`${RNA} ${ERR} Script ${script.name} threw an error.`)
-        console.error(err)
+        log.err('runna', `Script ${script.name} threw an error.`)
+        log.err(script.name, err)
         this.handleError(exitOnError)
         end()
       })
 
       // Capture stdout.
       child.stdout.on('data', buf => {
-        this.getLogLines(buf, script.name, LOG).forEach(line => process.stdout.write(line))
+        log.dbg(script.name, buf)
+        // this.getLogLines(buf, script.name, LOG).forEach(line => process.stdout.write(line))
       })
 
       // Capture stderr.
       child.stderr.on('data', buf => {
-        this.getLogLines(buf, script.name, ERR).forEach(line => process.stderr.write(line))
+        log.err(script.name, buf)
+        // this.getLogLines(buf, script.name, ERR).forEach(line => process.stderr.write(line))
         // Background processes can log errors as much as they want.
         !script.isBackground && this.handleError(exitOnError)
       })
 
       // Memorize.
-      this.children[child.pid] = {...script, process: child}
+      this.children.push({
+        ...script,
+        pid: child.pid,
+        process: child
+      })
     })
+  }
+
+  deleteChild (pid) {
+    for (let ii = this.children.length - 1; ii >= 0; --ii) {
+      this.children[ii].pid === pid && this.children.splice(ii, 1)
+    }
   }
 
   getSpawnArgs (cmd) {
@@ -245,14 +255,14 @@ class Runner {
 
     // Initialize queue.
     this.queue = []
-    const waitMsg = `${RNA} ${LOG} Watching ${chalk.yellow(pathToWatch)} for changes...`
-    console.log(waitMsg)
+    const waitMsg = `Watching ${chalk.yellow(pathToWatch)} for changes...`
+    log.dbg('runna', waitMsg)
     watch(pathToWatch, localPath => this.queue.push(localPath))
 
     // Main loop.
     while (true) {
       if (await this.processQueue(rules)) {
-        console.log(waitMsg)
+        log.dbg('runna', waitMsg)
       }
       await this.wait(FILE_WATCH_WAIT)
     }
@@ -289,7 +299,7 @@ class Runner {
       for (const m of match) {
         // Make sure each change that triggers a script is logged only once.
         if (!loggedChanges[m]) {
-          console.log(`${RNA} ${LOG} Changed ${chalk.yellow(path.resolve(m))}`)
+          log.dbg('runna', `Changed ${chalk.yellow(path.resolve(m))}`)
           loggedChanges.add(m)
         }
         chainsToRun[rule.chain].files.add(m)
@@ -311,7 +321,7 @@ class Runner {
 
   handleError (exitOnError) {
     if (exitOnError) {
-      console.log(`${RNA} ${ERR} Shutting down.`)
+      log.dbg('runna', `Shutting down.`)
       process.exitCode = 1
       process.exit(1)
     }

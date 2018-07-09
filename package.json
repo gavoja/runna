@@ -57,6 +57,9 @@
     "generate:mix": [
       "runna/test/triggers/$PROJ/mix",
       "runna/test/triggers/mix"
+    ],
+    "fail:log - fail:throw - fail:exit": [
+      "runna/test/triggers/fail"
     ]
   }
 }
