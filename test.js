@@ -31,11 +31,7 @@ async function wait4 (callback, expectedResult, message) {
 async function exec (command) {
   return new Promise(resolve => {
     cp.exec(command, (err, stdout, stderr) => {
-      if (err) {
-        resolve(false)
-        return
-      }
-      resolve(true)
+      return err ? resolve(false) : resolve(true)
     })
   })
 }

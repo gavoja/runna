@@ -12,6 +12,7 @@ setTimeout(() => {
 
   if (args.error === 'log') {
     console.error('Failing with error log.')
+    console.error('Second error line.')
     process.exit(0)
   }
 
@@ -40,7 +41,7 @@ setTimeout(() => {
 
   if (args.background) {
     console.log('Chillin\' in the background...')
-    console.error('...and sometimes log an error.')
+    console.error('Loging an error.')
     setInterval(() => {}, 1000)
   }
 }, parseInt(args.delay || 0, 10))

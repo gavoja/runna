@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -28,7 +28,7 @@
   "scripts": {
     "test": "node test.js",
     "clean": "node test/tester.js --clean",
-    "generate:project": "node test/tester.js --generate $PROJ --delay 50",
+    "generate:project": "node test/tester.js --generate $PROJ --delay 500",
     "generate:plain": "node test/tester.js --generate plain --delay 100",
     "generate:file": "node test/tester.js --generate $FILE --delay 150",
     "generate:mix": "node test/tester.js --generate $FILE.$PROJ --delay 200",

@@ -1,13 +1,13 @@
 'use strict'
 
 const chalk = require('chalk')
-const spawn = require('child_process').spawn
 const fs = require('fs')
 const path = require('path')
 const watch = require('simple-watcher')
 const subarg = require('subarg')
 const minimatch = require('minimatch')
 const log = require('./lib/log').getInstance()
+const Script = require('./lib/Script')
 
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
@@ -18,6 +18,7 @@ Usage:
 Options:
   -p <projects>            Run with projects; a comma separated list.
   -w [<path-to-watch>]     Default is current.
+  -d debug                 Verbose mode (debug).
 `
 
 // Serously, this should be the default.
@@ -38,13 +39,14 @@ class Runner {
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
     const projects = args.p ? args.p.trim().split(',') : []
 
+    args.d && log.enableDebug()
     this.init(chain, projects, pathToWatch)
   }
 
   async init (chain, projects, pathToWatch) {
     this.cfg = this.getCfg()
     this.queue = []
-    this.children = []
+    this.pipeline = [] // List of Script objects.
 
     await this.runChain(chain, [], projects)
     pathToWatch && this.observe(pathToWatch, projects)
@@ -56,165 +58,67 @@ class Runner {
 
   // chain ~ '+foo - bar baz'
   async runChain (chain, files = [], projects = [], exitOnError = true) {
-    files.length === 0 && files.push('')
     const timestamp = Date.now()
-    // Get scripts: [{
-    //   name: 'some:script::variant:file.js'
-    //   isBackground: false,
-    //   isPause: false,
-    //   code: 'node some-script.js -p red'
-    // }]
-    const scripts = []
-    for (const text of chain.split(' ')) {
-      const name = text.replace(/[+]*(.*)/g, '$1')
-      const isBackground = text.includes('+')
-      const isPause = text === '-'
-      const code = this.cfg.scripts[name]
 
-      if (!code && !isPause) {
-        log.err('runna', `Script ${name} does not exist.`)
-        this.handleError(exitOnError)
-        continue
-      }
+    this.removeCompletedScriptsFromPipeline()
 
-      // Plain script.
-      if (isPause || (!code.includes('$PROJ') && !code.includes('$FILE'))) {
-        scripts.push({name, isBackground, isPause, code})
-        continue
-      }
-
-      // Flavored script.
-      if (code.includes('$PROJ') && !code.includes('$FILE')) {
-        for (const project of projects) {
-          scripts.push({name: `${name}::${project}`, isBackground, isPause, code: code.replace(/\$PROJ/g, project)})
-        }
-      }
-
-      // File script.
-      if (!code.includes('$PROJ') && code.includes('$FILE')) {
-        for (const file of files) {
-          const suffix = file ? `::${path.basename(file)}` : ''
-          scripts.push({name: `${name}${suffix}`, isBackground, isPause, code: code.replace(/\$FILE/g, file)})
-        }
-      }
-
-      // Flavoured file script.
-      if (code.includes('$PROJ') && code.includes('$FILE')) {
-        for (const project of projects) {
-          const projCode = code.replace(/\$PROJ/g, project)
-          for (const file of files) {
-            const suffix = file ? `:${path.basename(file)}` : ''
-            scripts.push({name: `${name}::${project}${suffix}`, isBackground, isPause, code: projCode.replace(/\$FILE/g, file)})
-          }
-        }
+    // Add scripts to pipeline.
+    files.length === 0 && files.push('')
+    for (const name of chain.split(' ')) {
+      const code = this.cfg.scripts[name.replace(/[+]*(.*)/g, '$1')] // Name without '+'.
+      for (const script of Script.getInstances(name, code, files, projects)) {
+        this.pipeline.push(script)
       }
     }
 
     // Run all the scripts in a chain.
     let msg = projects.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(projects)}` : chalk.magenta(chain)
-
     log.dbg('runna', `Chain ${msg} started.`)
-    for (const script of scripts) {
-      if (script.isPause) {
-        await this.waitForAllChildrenToComplete()
-      } else if (script.code) {
-        this.runScript(script, exitOnError)
-      } else {
-        log.err('runna', `Script ${script.name} does not exists.`)
-        this.handleError(exitOnError)
-      }
+    for (const script of this.pipeline) {
+      await this.startScript(script, exitOnError)
     }
 
+    // Finalize.
     await this.waitForAllChildrenToComplete()
     const duration = Date.now() - timestamp
     log.dbg('runna', `Chain ${msg} completed in ${duration} ms.`)
   }
 
+  async startScript (script, exitOnError) {
+    script.start(this.cfg.binaries, () => {
+      this.updateStatus()
+      script.hasFailed() && this.handleScriptError(exitOnError)
+    })
+    this.updateStatus()
+
+    if (script.isPause()) {
+      await this.waitForAllChildrenToComplete()
+      script.end()
+    }
+  }
+
   async waitForAllChildrenToComplete () {
     log.dbg('runna', `Waiting for all running scripts to complete...`)
-    // We need to exclude background scripts.
-    while (this.children.filter(c => !c.isBackground).length !== 0) {
+    while (this.pipeline.filter(s => s.isRunning() && !s.isPause() && !s.isBackground()).length !== 0) {
       await this.wait(CHILD_EXIT_WAIT)
     }
   }
 
-  // Spawn child process.
-  async runScript (script, exitOnError) {
-    // Scripts running in the background should not exit on error.
-    // exitOnError = script.isBackground ? false : exitOnError
-    const [args, shell] = this.getSpawnArgs(script.code)
-    return new Promise(resolve => {
-      const timestamp = Date.now()
-
-      // Spawn child process.
-      log.dbg('runna', `Script ${script.name} started.`)
-      const child = spawn(args[0], args.slice(1), {shell})
-
-      // Finalization handling.
-      let done
-      const end = () => {
-        if (!done) {
-          let duration = Date.now() - timestamp
-          log.dbg('runna', `Script ${script.name} completed in ${duration} ms.`)
-          this.deleteChild(child.pid)
-          done = resolve()
-        }
+  removeCompletedScriptsFromPipeline () {
+    for (let ii = this.pipeline.length - 1; ii >= 0; --ii) {
+      if (this.pipeline[ii].hasEnded()) {
+        this.pipeline.splice(ii, 1)
       }
-
-      child.on('close', code => {
-        if (code !== 0) {
-          log.err('runna', `Script ${script.name} exited with error code ${code}.`)
-          this.handleError(exitOnError)
-        }
-        end()
-      })
-
-      child.on('error', err => {
-        log.err('runna', `Script ${script.name} threw an error.`)
-        log.err(script.name, err)
-        this.handleError(exitOnError)
-        end()
-      })
-
-      // Capture stdout.
-      child.stdout.on('data', buf => {
-        log.dbg(script.name, buf)
-        // this.getLogLines(buf, script.name, LOG).forEach(line => process.stdout.write(line))
-      })
-
-      // Capture stderr.
-      child.stderr.on('data', buf => {
-        log.err(script.name, buf)
-        // this.getLogLines(buf, script.name, ERR).forEach(line => process.stderr.write(line))
-        // Background processes can log errors as much as they want.
-        !script.isBackground && this.handleError(exitOnError)
-      })
-
-      // Memorize.
-      this.children.push({
-        ...script,
-        pid: child.pid,
-        process: child
-      })
-    })
-  }
-
-  deleteChild (pid) {
-    for (let ii = this.children.length - 1; ii >= 0; --ii) {
-      this.children[ii].pid === pid && this.children.splice(ii, 1)
     }
   }
 
-  getSpawnArgs (cmd) {
-    const args = cmd.split(' ')
-    const packageName = args[0]
-
-    // Resolve local package binary.
-    if (this.cfg.binaries[packageName]) {
-      args[0] = this.cfg.binaries[packageName]
+  handleScriptError (exitOnError) {
+    if (exitOnError) {
+      log.dbg('runna', `Shutting down.`)
+      log.end()
+      process.exitCode = 1
+      process.exit(1)
     }
-
-    return [args, false]
   }
 
   //
@@ -316,18 +220,6 @@ class Runner {
   }
 
   //
-  // Exit handling.
-  //
-
-  handleError (exitOnError) {
-    if (exitOnError) {
-      log.dbg('runna', `Shutting down.`)
-      process.exitCode = 1
-      process.exit(1)
-    }
-  }
-
-  //
   // Helpers.
   //
 
@@ -368,6 +260,27 @@ class Runner {
 
   match (paths, pattern) {
     return minimatch.match(paths, pattern)
+  }
+
+  updateStatus () {
+    let isRunning = false
+    const arr = []
+
+    arr.push('[')
+    for (const script of this.pipeline) {
+      isRunning = !script.hasEnded() && !script.isBackground()
+      script.hasEnded() && script.hasFailed() && arr.push(chalk.red(script.name))
+      script.hasEnded() && !script.hasFailed() && arr.push(chalk.green(script.name))
+      script.isRunning() && arr.push(chalk.white(script.name))
+      !script.hasEnded() && !script.isRunning() && arr.push(chalk.gray(script.name))
+    }
+    arr.push(']')
+
+    isRunning && arr.push('Processing... ')
+    !isRunning && arr.push('Done. ')
+
+    log.setStatus(arr.length ? arr.join(' ') : null)
+    log.printStatus()
   }
 }
 

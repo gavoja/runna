@@ -16,6 +16,7 @@ Usage:
 Options:
   -p <projects>            Run with projects; a comma separated list.
   -w [<path-to-watch>]     Default is current.
+  -d                       Verbose mode (debug).
 ```
 
 ## Quck start
