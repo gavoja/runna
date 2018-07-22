@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "chalk": "^2.4.1",
+    "log-update": "^2.3.0",
     "minimatch": "^3.0.4",
     "simple-watcher": "^3.0.0",
     "subarg": "^1.0.0"
@@ -41,7 +42,8 @@
     "build:fail:exit": "node index.js [ clean - generate:plain generate:project fail:exit ] -p blue,red",
     "build": "node index.js [ clean - generate:plain generate:project ] -p blue,red",
     "build:noprojects": "node index.js [ clean - generate:project - generate:plain ]",
-    "dev": "node index.js [ +background clean ] -w .. -p blue,red"
+    "dev:long": "node index.js [ clean - generate:plain generate:project - generate:plain generate:project - generate:plain generate:project - generate:plain generate:project - generate:plain generate:project ] -w .. -p blue,red",
+    "dev": "node index.js [ +background clean ] -w .. -p blue,red "
   },
   "observe": {
     "generate:project": [
