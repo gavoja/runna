@@ -18,7 +18,7 @@ Usage:
 Options:
   -p <projects>            Run with projects; a comma separated list.
   -w [<path-to-watch>]     Default is current.
-  -d debug                 Verbose mode (debug).
+  -v                       Verbose mode (debug).
 `
 
 // Serously, this should be the default.
@@ -39,7 +39,7 @@ class Runner {
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
     const projects = args.p ? args.p.trim().split(',') : []
 
-    args.d && log.enableDebug()
+    ;(args.d || args.v) && log.enableDebug()
     this.init(chain, projects, pathToWatch)
   }
 
@@ -49,7 +49,11 @@ class Runner {
     this.pipeline = [] // List of Script objects.
 
     await this.runChain(chain, [], projects)
-    pathToWatch && this.observe(pathToWatch, projects)
+    if (pathToWatch) {
+      this.observe(pathToWatch, projects)
+    } else {
+      log.end()
+    }
   }
 
   //
@@ -264,11 +268,13 @@ class Runner {
 
   updateStatus () {
     let isRunning = false
+    let duration = 0
     const arr = []
 
     arr.push('[')
     for (const script of this.pipeline) {
-      isRunning = !script.hasEnded() && !script.isBackground()
+      isRunning = isRunning || (!script.isBackground() && !script.hasEnded())
+      duration += script.duration
       script.hasEnded() && script.hasFailed() && arr.push(chalk.red(script.name))
       script.hasEnded() && !script.hasFailed() && arr.push(chalk.green(script.name))
       script.isRunning() && arr.push(chalk.white(script.name))
@@ -277,10 +283,9 @@ class Runner {
     arr.push(']')
 
     isRunning && arr.push('Processing... ')
-    !isRunning && arr.push('Done. ')
+    !isRunning && arr.push(`Completed in ${Math.round(duration / 10) / 100} seconds. `)
 
-    log.setStatus(arr.length ? arr.join(' ') : null)
-    log.printStatus()
+    log.printStatus(arr.join(' '))
   }
 }
 
