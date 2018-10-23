@@ -25,8 +25,9 @@ Options:
 process.on('unhandledRejection', reason => console.error(reason))
 
 class Runner {
-  async main () {
-    const version = this.getJson(path.join(__dirname, 'package.json')).version
+  static async main () {
+    const runner = new Runner()
+    const version = runner.getJson(path.join(__dirname, 'package.json')).version
     console.log(`Runna version ${version}.`)
 
     const args = subarg(process.argv.slice(2))
@@ -40,7 +41,7 @@ class Runner {
     const projects = args.p ? args.p.trim().split(',') : []
 
     ;(args.d || args.v) && log.enableDebug()
-    this.init(chain, projects, pathToWatch)
+    runner.init(chain, projects, pathToWatch)
   }
 
   async init (chain, projects, pathToWatch) {
@@ -290,8 +291,7 @@ class Runner {
 }
 
 if (require.main === module) {
-  const runner = new Runner()
-  runner.main()
+  Runner.main()
 }
 
 module.exports = Runner
