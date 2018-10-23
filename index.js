@@ -7,7 +7,7 @@ const watch = require('simple-watcher')
 const subarg = require('subarg')
 const minimatch = require('minimatch')
 const log = require('./lib/log').getInstance()
-const Script = require('./lib/Script')
+const Script = require('./lib/script')
 
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
