@@ -3,7 +3,7 @@
 const chalk = require('chalk')
 const fs = require('fs')
 const path = require('path')
-const watch = require('simple-watcher')
+const gaze = require('gaze')
 const subarg = require('subarg')
 const minimatch = require('minimatch')
 const log = require('./lib/log').getInstance()
@@ -166,7 +166,12 @@ class Runner {
     this.queue = []
     const waitMsg = `Watching ${chalk.yellow(pathToWatch)} for changes...`
     log.dbg('runna', waitMsg)
-    watch(pathToWatch, localPath => this.queue.push(localPath))
+    gaze(pathToWatch, (err, watcher) => {
+      if (err) {
+        throw err
+      }
+      watcher.on('all', (event, filepath) => this.queue.push(filepath))
+    })
 
     // Main loop.
     while (true) {
