@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "chalk": "^2.4.1",
+    "fast-glob": "^2.2.4",
+    "is-docker": "^1.1.0",
     "log-update": "^2.3.0",
     "minimatch": "^3.0.4",
     "simple-watcher": "^3.0.0",

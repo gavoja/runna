@@ -8,6 +8,8 @@ const subarg = require('subarg')
 const minimatch = require('minimatch')
 const log = require('./lib/log').getInstance()
 const Script = require('./lib/script')
+const isDocker = require('is-docker')
+const fastGlob = require('fast-glob')
 
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
@@ -18,6 +20,7 @@ Usage:
 Options:
   -p <projects>            Run with projects; a comma separated list.
   -w [<path-to-watch>]     Default is current.
+  --polling=<mode>         Polling mode: true/false to force, defaults to auto (true when inside a Docker container).
   -v                       Verbose mode (debug).
 `
 
@@ -30,8 +33,27 @@ class Runner {
     const version = runner.getJson(path.join(__dirname, 'package.json')).version
     console.log(`Runna version ${version}.`)
 
-    const args = subarg(process.argv.slice(2))
-    if (!args['_'] || args['_'].length === 0 || !args['_'][0]['_'] || args['_'][0]['_'].length === 0) {
+    const args = subarg(process.argv.slice(2), {
+      default: {
+        polling: 'auto'
+      }
+    })
+
+    // Determine polling mode
+    let usePolling = null
+    switch (args.polling) {
+      case 'true':
+        usePolling = true
+        break
+      case 'false':
+        usePolling = true
+        break
+      case 'auto':
+        usePolling = isDocker()
+        break
+    }
+
+    if (!args['_'] || args['_'].length === 0 || !args['_'][0]['_'] || args['_'][0]['_'].length === 0 || usePolling === null) {
       console.log(HELP)
       process.exit(0)
     }
@@ -41,17 +63,17 @@ class Runner {
     const projects = args.p ? args.p.trim().split(',') : []
 
     ;(args.d || args.v) && log.enableDebug()
-    runner.init(chain, projects, pathToWatch)
+    runner.init(chain, projects, pathToWatch, usePolling)
   }
 
-  async init (chain, projects, pathToWatch) {
+  async init (chain, projects, pathToWatch, usePolling) {
     this.cfg = this.getCfg()
     this.queue = []
     this.pipeline = [] // List of Script objects.
 
     await this.runChain(chain, [], projects)
     if (pathToWatch) {
-      this.observe(pathToWatch, projects)
+      this.observe(pathToWatch, projects, usePolling)
     } else {
       log.end()
     }
@@ -130,7 +152,7 @@ class Runner {
   // Watching.
   //
 
-  async observe (pathToWatch, projects) {
+  async observe (pathToWatch, projects, usePolling) {
     // Get rules: [{
     //   chain: '+foo - bar baz'
     //   pattern: 'c:/absolute/path/to/red/**'
@@ -166,7 +188,15 @@ class Runner {
     this.queue = []
     const waitMsg = `Watching ${chalk.yellow(pathToWatch)} for changes...`
     log.dbg('runna', waitMsg)
-    watch(pathToWatch, localPath => this.queue.push(localPath))
+
+    if (usePolling) {
+      pathToWatch = rules.reduce((val, rule) => {
+        const files = fastGlob.sync(rule.pattern)
+        return val.concat(files)
+      }, [])
+    }
+
+    watch(pathToWatch, localPath => this.queue.push(localPath), { usePolling })
 
     // Main loop.
     while (true) {
