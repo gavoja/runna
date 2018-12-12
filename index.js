@@ -19,7 +19,7 @@ Options:
   -p <projects>            Run with projects; a comma separated list.
   -w [<path-to-watch>]     Default is current.
   -v                       Verbose mode (debug).
-  -o                       Use polling when watching (useful when using docker on Windows).
+  -o                       Use polling when watching (useful when using Docker).
 `
 
 // Serously, this should be the default.
