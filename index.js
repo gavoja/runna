@@ -4,10 +4,10 @@ const chalk = require('chalk')
 const fs = require('fs')
 const path = require('path')
 const watch = require('simple-watcher')
-const subarg = require('subarg')
-const minimatch = require('minimatch')
 const log = require('./lib/log').getInstance()
 const Script = require('./lib/script')
+const globrex = require('globrex')
+const args = require('./lib/args')
 
 const CHILD_EXIT_WAIT = 50
 const FILE_WATCH_WAIT = 300
@@ -19,6 +19,7 @@ Options:
   -p <projects>            Run with projects; a comma separated list.
   -w [<path-to-watch>]     Default is current.
   -v                       Verbose mode (debug).
+  -o                       Use polling when watching (useful when using docker on Windows).
 `
 
 // Serously, this should be the default.
@@ -30,28 +31,27 @@ class Runner {
     const version = runner.getJson(path.join(__dirname, 'package.json')).version
     console.log(`Runna version ${version}.`)
 
-    const args = subarg(process.argv.slice(2))
-    if (!args['_'] || args['_'].length === 0 || !args['_'][0]['_'] || args['_'][0]['_'].length === 0) {
+    if (!args.chain) {
       console.log(HELP)
       process.exit(0)
     }
 
-    const chain = args['_'][0]['_'].join(' ')
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
     const projects = args.p ? args.p.trim().split(',') : []
+    const usePolling = args.o
 
     ;(args.d || args.v) && log.enableDebug()
-    runner.init(chain, projects, pathToWatch)
+    runner.init(args._, projects, pathToWatch, usePolling)
   }
 
-  async init (chain, projects, pathToWatch) {
+  async init (chain, projects, pathToWatch, usePolling) {
     this.cfg = this.getCfg()
     this.queue = []
     this.pipeline = [] // List of Script objects.
 
     await this.runChain(chain, [], projects)
     if (pathToWatch) {
-      this.observe(pathToWatch, projects)
+      this.observe(pathToWatch, projects, usePolling)
     } else {
       log.end()
     }
@@ -130,7 +130,7 @@ class Runner {
   // Watching.
   //
 
-  async observe (pathToWatch, projects) {
+  async observe (pathToWatch, projects, usePolling) {
     // Get rules: [{
     //   chain: '+foo - bar baz'
     //   pattern: 'c:/absolute/path/to/red/**'
@@ -166,6 +166,20 @@ class Runner {
     this.queue = []
     const waitMsg = `Watching ${chalk.yellow(pathToWatch)} for changes...`
     log.dbg('runna', waitMsg)
+
+    // We need to get all the files that match the patterns in order to watch them directly instead of the folder.
+    if (usePolling) {
+      pathToWatch = []
+      for (const rule of rules) {
+        // We can actually get files based on the directories from patterns, up until the asterisk.
+        // This drastically improves the perofmance as opposed to scanning the entire pathToWatch.
+        const entityPath = rule.pattern.split('*').shift()
+        const files = this.getFiles(entityPath)
+        pathToWatch = pathToWatch.concat(this.match(files, rule.pattern)) // Narrow down to actual pattern.
+      }
+      pathToWatch = [...new Set([...pathToWatch])] // Deduplicate
+    }
+
     watch(pathToWatch, localPath => this.queue.push(localPath))
 
     // Main loop.
@@ -236,12 +250,14 @@ class Runner {
     cfg.binaries = {}
 
     const binPath = path.resolve(process.cwd(), 'node_modules', '.bin')
-    for (const script of fs.readdirSync(binPath)) {
-      const scriptPath = path.resolve(binPath, script)
-      if (process.platform === 'win32' && script.endsWith('.cmd')) {
-        cfg.binaries[script.slice(0, -4)] = scriptPath
-      } else {
-        cfg.binaries[script] = path.resolve(binPath, script)
+    if (fs.existsSync(binPath)) {
+      for (const script of fs.readdirSync(binPath)) {
+        const scriptPath = path.resolve(binPath, script)
+        if (process.platform === 'win32' && script.endsWith('.cmd')) {
+          cfg.binaries[script.slice(0, -4)] = scriptPath
+        } else {
+          cfg.binaries[script] = path.resolve(binPath, script)
+        }
       }
     }
 
@@ -263,8 +279,10 @@ class Runner {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 
-  match (paths, pattern) {
-    return minimatch.match(paths, pattern)
+  match (normalizedPaths, pattern) {
+    // Paths should be already normalized to slashes.
+    const regex = globrex(pattern, {globstar: true}).regex
+    return normalizedPaths.filter(p => regex.test(p))
   }
 
   updateStatus () {
@@ -287,6 +305,25 @@ class Runner {
     !isRunning && arr.push(`Completed in ${Math.round(duration / 10) / 100} seconds. `)
 
     log.printStatus(arr.join(' '))
+  }
+
+  // Deep reads the filder and returns a list of normalized file paths.
+  getFiles (root) {
+    const files = []
+    const arr = [path.resolve(root)]
+    for (let ii = 0; ii < arr.length; ++ii) {
+      const entityPath = arr[ii]
+      const entityName = path.basename(entityPath)
+      if (!fs.statSync(entityPath).isDirectory()) {
+        files.push(entityPath.replace(/\\/g, '/'))
+      } else if (!entityName.startsWith('.') && entityName !== 'node_modules') {
+        for (const childName of fs.readdirSync(entityPath)) {
+          arr.push(path.resolve(entityPath, childName))
+        }
+      }
+    }
+
+    return files
   }
 }
 

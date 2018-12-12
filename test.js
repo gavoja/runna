@@ -76,6 +76,8 @@ async function test () {
     mixRed: path.resolve(TRIGGERS, 'red', 'mix'),
     mixBlue: path.resolve(TRIGGERS, 'blue', 'mix'),
     mixAll: path.resolve(TRIGGERS, 'mix'),
+    skipBlue: path.resolve(TRIGGERS, 'blue', 'skip'),
+    skipSubBlue: path.resolve(TRIGGERS, 'blue', 'sub-folder', 'skip'),
     projAll: path.resolve(TRIGGERS, 'project'),
     plain: path.resolve(TRIGGERS, 'plain')
   }
@@ -124,6 +126,77 @@ async function test () {
   console.log('Develop')
   exec('npm run dev')
   await wait(3000) // Ensure watching is enabled.
+
+  console.log('Trigger - blue/skip')
+  touch(triggers.skipBlue)
+  await wait(3000)
+  await notExist(items.blue)
+
+  console.log('Trigger - blue/sub-folder/skip')
+  touch(triggers.skipSubBlue)
+  await wait(3000)
+  await notExist(items.blue)
+  clean()
+
+  console.log('Trigger - red/project')
+  touch(triggers.projRed)
+  await exist(items.red)
+  clean()
+
+  console.log('Trigger - blue/project')
+  touch(triggers.projBlue)
+  await exist(items.blue)
+  clean()
+
+  console.log('Trigger - blue/sub-folder/project')
+  touch(triggers.projSubBlue)
+  await exist(items.blue)
+  clean()
+
+  console.log('Trigger - red/mix')
+  touch(triggers.mixRed)
+  await exist(items.mixRed)
+  clean()
+
+  console.log('Trigger - blue/mix')
+  touch(triggers.mixBlue)
+  await exist(items.mixBlue)
+  clean()
+
+  console.log('Trigger - plain')
+  touch(triggers.plain)
+  await exist(items.plain)
+  clean()
+
+  console.log('Trigger - project')
+  touch(triggers.projAll)
+  await exist(items.blue, items.red)
+  clean()
+
+  console.log('Trigger - mix')
+  touch(triggers.mixAll)
+  await exist(items.mixBlue, items.mixRed)
+  clean()
+
+  //
+  // Observe
+  //
+
+  clean()
+  console.log('Develop with polling')
+  exec('npm run dev:polling')
+  await wait(3000) // Ensure watching is enabled.
+
+  console.log('Trigger - blue/skip')
+  touch(triggers.skipBlue)
+  await wait(3000)
+  await notExist(items.blue)
+
+  console.log('Trigger - blue/sub-folder/skip')
+  touch(triggers.skipSubBlue)
+  await wait(3000)
+  await notExist(items.blue)
+  clean()
 
   console.log('Trigger - red/project')
   touch(triggers.projRed)

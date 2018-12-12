@@ -2,8 +2,7 @@
 
 const path = require('path')
 const fs = require('fs')
-const subarg = require('subarg')
-const args = subarg(process.argv.slice(2))
+const args = require('../lib/args')
 
 setTimeout(() => {
   if (args.error === 'throw') {
