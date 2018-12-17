@@ -37,7 +37,7 @@ class Runner {
     }
 
     const pathToWatch = (args.w === true && process.cwd()) || (typeof args.w === 'string' && path.resolve(args.w))
-    const projects = args.p ? args.p.trim().split(',') : []
+    const projects = typeof args.p === 'string' ? args.p.trim().split(',') : []
     const usePolling = args.o
 
     ;(args.d || args.v) && log.enableDebug()
@@ -314,11 +314,13 @@ class Runner {
     for (let ii = 0; ii < arr.length; ++ii) {
       const entityPath = arr[ii]
       const entityName = path.basename(entityPath)
-      if (!fs.statSync(entityPath).isDirectory()) {
-        files.push(entityPath.replace(/\\/g, '/'))
-      } else if (!entityName.startsWith('.') && entityName !== 'node_modules') {
-        for (const childName of fs.readdirSync(entityPath)) {
-          arr.push(path.resolve(entityPath, childName))
+      if (fs.existsSync(entityName)) {
+        if (!fs.statSync(entityPath).isDirectory()) {
+          files.push(entityPath.replace(/\\/g, '/'))
+        } else if (!entityName.startsWith('.') && entityName !== 'node_modules') {
+          for (const childName of fs.readdirSync(entityPath)) {
+            arr.push(path.resolve(entityPath, childName))
+          }
         }
       }
     }
