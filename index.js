@@ -314,7 +314,7 @@ class Runner {
     for (let ii = 0; ii < arr.length; ++ii) {
       const entityPath = arr[ii]
       const entityName = path.basename(entityPath)
-      if (fs.existsSync(entityName)) {
+      if (fs.existsSync(entityPath)) {
         if (!fs.statSync(entityPath).isDirectory()) {
           files.push(entityPath.replace(/\\/g, '/'))
         } else if (!entityName.startsWith('.') && entityName !== 'node_modules') {
