@@ -1,5 +1,6 @@
 'use strict'
 
+const test = require('triala')
 const cp = require('child_process')
 const fs = require('fs')
 const path = require('path')
@@ -10,236 +11,237 @@ const TRIGGERS = path.resolve(__dirname, 'test', 'triggers')
 const TIMEOUT = 5000
 const STEP = 100
 
-// Serously, this should be the default.
-process.on('unhandledRejection', reason => console.error(reason))
+test('runna', class {
+  //
+  // Helpers
+  //
 
-async function wait (ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+  async _wait (ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
 
-async function wait4 (callback, expectedResult, message) {
-  for (let start = Date.now(); Date.now() - start < TIMEOUT; await wait(STEP)) {
-    if (callback() === expectedResult) {
-      return
+  async _wait4 (callback, expectedResult, message) {
+    for (let start = Date.now(); Date.now() - start < TIMEOUT; await this._wait(STEP)) {
+      if (callback() === expectedResult) {
+        return
+      }
+    }
+
+    throw new Error(message)
+  }
+
+  async _exec (command) {
+    return new Promise(resolve => {
+      cp.exec(command, (err, stdout, stderr) => {
+        return err ? resolve(false) : resolve(true)
+      })
+    })
+  }
+
+  async _spawn (script, delay) {
+    return new Promise(async resolve => {
+      const args = require('./package.json').scripts[script].substr(5).split(' ')
+      const child = cp.spawn('node', args)
+
+      child.stdout.on('data', async data => {
+        const line = data.toString('utf8')
+        // process.stdout.write(line)
+        if (line.includes('Watching')) {
+          await this._wait(delay) // Not sure why waching does not happen instantly.
+          resolve(child)
+        }
+      })
+    })
+  }
+
+  async _clean () {
+    for (const file of fs.readdirSync(DIST)) {
+      fs.unlinkSync(path.resolve(DIST, file))
     }
   }
 
-  console.error(message)
-  process.exit(1)
-}
-
-async function exec (command) {
-  return new Promise(resolve => {
-    cp.exec(command, (err, stdout, stderr) => {
-      return err ? resolve(false) : resolve(true)
-    })
-  })
-}
-
-function clean () {
-  for (const file of fs.readdirSync(DIST)) {
-    fs.unlinkSync(path.resolve(DIST, file))
-  }
-}
-
-function touch (file) {
-  fs.closeSync(fs.openSync(file, 'w'))
-}
-
-async function exist (...files) {
-  await wait4(() => files.every(f => fs.existsSync(f)), true, `Expected files to exist: ${files}`)
-}
-
-async function notExist (...files) {
-  await wait4(() => files.every(f => !fs.existsSync(f)), true, `Expected files not to exist: ${files}`)
-}
-
-// -----------------------------------------------------------------------------
-// Actual test below
-// -----------------------------------------------------------------------------
-
-async function test () {
-  console.log('Running tests...')
-
-  const items = {
-    red: path.resolve(DIST, 'red'),
-    blue: path.resolve(DIST, 'blue'),
-    plain: path.resolve(DIST, 'plain'),
-    mixRed: path.resolve(DIST, 'mix.red'),
-    mixBlue: path.resolve(DIST, 'mix.blue')
+  async _touch (trigger) {
+    const file = path.resolve(TRIGGERS, trigger)
+    fs.closeSync(fs.openSync(file, 'w'))
   }
 
-  const triggers = {
-    projRed: path.resolve(TRIGGERS, 'red', 'project'),
-    projBlue: path.resolve(TRIGGERS, 'blue', 'project'),
-    projSubBlue: path.resolve(TRIGGERS, 'blue', 'sub-folder', 'project'),
-    mixRed: path.resolve(TRIGGERS, 'red', 'mix'),
-    mixBlue: path.resolve(TRIGGERS, 'blue', 'mix'),
-    mixAll: path.resolve(TRIGGERS, 'mix'),
-    skipBlue: path.resolve(TRIGGERS, 'blue', 'skip'),
-    skipSubBlue: path.resolve(TRIGGERS, 'blue', 'sub-folder', 'skip'),
-    projAll: path.resolve(TRIGGERS, 'project'),
-    plain: path.resolve(TRIGGERS, 'plain')
+  async _exist (...items) {
+    await this._wait4(() => items.every(item => fs.existsSync(path.resolve(DIST, item))), true, `Expected items to exist: ${items}`)
   }
 
-  let result
+  async _notExist (...items) {
+    await this._wait4(() => items.every(item => !fs.existsSync(path.resolve(DIST, item))), true, `Expected items not to exist: ${items}`)
+  }
+
+  async _trigger (task, trigger, result, delay = 10) {
+    result = Array.isArray(result) ? result : [result]
+    const child = await this._spawn(task, delay)
+    this._touch(trigger)
+    await this._exist(...result)
+    child.kill()
+  }
 
   //
-  // Build
+  // Tests: build
   //
 
-  clean()
-  console.log('Build')
-  await exec('npm run build')
-  await exist(items.red)
-  await exist(items.blue)
-  await exist(items.plain)
+  async 'build' () {
+    this._clean()
+    await this._exec('npm run build')
+    await this._exist('red')
+    await this._exist('blue')
+    await this._exist('plain')
+  }
 
-  clean()
-  console.log('Build - no projects')
-  await exec('npm run build:noprojects')
-  await exist(items.plain)
-  await notExist(items.red)
-  await notExist(items.blue)
-
-  //
-  // Errors
-  //
-
-  console.log('Failure - log')
-  result = await exec('npm run build:fail:log')
-  assert.strictEqual(result, false)
-
-  console.log('Failure - throw')
-  result = await exec('npm run build:fail:throw')
-  assert.strictEqual(result, false)
-
-  console.log('Failure - non zero exit code')
-  result = await exec('npm run build:fail:error')
-  assert.strictEqual(result, false)
+  async 'build - no projects' () {
+    this._clean()
+    await this._exec('npm run build:noprojects')
+    await this._exist('plain')
+    await this._notExist('red')
+    await this._notExist('blue')
+  }
 
   //
-  // Observe
+  // Tests: errors
   //
 
-  clean()
-  console.log('Develop')
-  exec('npm run dev')
-  await wait(3000) // Ensure watching is enabled.
+  async 'failure - log' () {
+    assert.strictEqual(await this._exec('npm run build:fail:log'), false)
+  }
 
-  console.log('Trigger - blue/skip')
-  touch(triggers.skipBlue)
-  await wait(3000)
-  await notExist(items.blue)
+  async 'failure - throw' () {
+    assert.strictEqual(await this._exec('npm run build:fail:throw'), false)
+  }
 
-  console.log('Trigger - blue/sub-folder/skip')
-  touch(triggers.skipSubBlue)
-  await wait(3000)
-  await notExist(items.blue)
-  clean()
-
-  console.log('Trigger - red/project')
-  touch(triggers.projRed)
-  await exist(items.red)
-  clean()
-
-  console.log('Trigger - blue/project')
-  touch(triggers.projBlue)
-  await exist(items.blue)
-  clean()
-
-  console.log('Trigger - blue/sub-folder/project')
-  touch(triggers.projSubBlue)
-  await exist(items.blue)
-  clean()
-
-  console.log('Trigger - red/mix')
-  touch(triggers.mixRed)
-  await exist(items.mixRed)
-  clean()
-
-  console.log('Trigger - blue/mix')
-  touch(triggers.mixBlue)
-  await exist(items.mixBlue)
-  clean()
-
-  console.log('Trigger - plain')
-  touch(triggers.plain)
-  await exist(items.plain)
-  clean()
-
-  console.log('Trigger - project')
-  touch(triggers.projAll)
-  await exist(items.blue, items.red)
-  clean()
-
-  console.log('Trigger - mix')
-  touch(triggers.mixAll)
-  await exist(items.mixBlue, items.mixRed)
-  clean()
+  async 'failure - non zero exit code' () {
+    assert.strictEqual(await this._exec('npm run build:fail:error'), false)
+  }
 
   //
-  // Observe
+  // Tests: observe
   //
 
-  clean()
-  console.log('Develop with polling')
-  exec('npm run dev:polling')
-  await wait(3000) // Ensure watching is enabled.
+  async 'trigger - blue/skip' () {
+    const child = await this._spawn('dev')
+    this._touch('blue/skip')
+    await this._wait(3000)
+    await this._notExist('blue')
+    child.kill()
+  }
 
-  console.log('Trigger - blue/skip')
-  touch(triggers.skipBlue)
-  await wait(3000)
-  await notExist(items.blue)
+  async 'trigger - blue/sub-folder/skip' () {
+    const child = await this._spawn('dev')
+    this._touch('blue/sub-folder/skip')
+    await this._wait(3000)
+    await this._notExist('blue')
+    child.kill()
+  }
 
-  console.log('Trigger - blue/sub-folder/skip')
-  touch(triggers.skipSubBlue)
-  await wait(3000)
-  await notExist(items.blue)
-  clean()
+  async 'trigger - blue/bulk/exclude' () {
+    const child = await this._spawn('dev')
+    this._touch('blue/bulk/exclude')
+    await this._wait(3000)
+    await this._notExist('blue')
+    child.kill()
+  }
 
-  console.log('Trigger - red/project')
-  touch(triggers.projRed)
-  await exist(items.red)
-  clean()
+  async 'trigger - blue/bulk/include' () {
+    await this._trigger('dev', 'blue/bulk/include', 'blue')
+  }
 
-  console.log('Trigger - blue/project')
-  touch(triggers.projBlue)
-  await exist(items.blue)
-  clean()
+  async 'trigger - red/project' () {
+    await this._trigger('dev', 'red/project', 'red')
+  }
 
-  console.log('Trigger - blue/sub-folder/project')
-  touch(triggers.projSubBlue)
-  await exist(items.blue)
-  clean()
+  async 'trigger - blue/project' () {
+    await this._trigger('dev', 'blue/project', 'blue')
+  }
 
-  console.log('Trigger - red/mix')
-  touch(triggers.mixRed)
-  await exist(items.mixRed)
-  clean()
+  async 'trigger - blue/sub-folder/project' () {
+    await this._trigger('dev', 'blue/sub-folder/project', 'blue')
+  }
 
-  console.log('Trigger - blue/mix')
-  touch(triggers.mixBlue)
-  await exist(items.mixBlue)
-  clean()
+  async 'trigger - red/mix' () {
+    await this._trigger('dev', 'red/mix', 'mix.red')
+  }
 
-  console.log('Trigger - plain')
-  touch(triggers.plain)
-  await exist(items.plain)
-  clean()
+  async 'trigger - blue/mix' () {
+    await this._trigger('dev', 'blue/mix', 'mix.blue')
+  }
 
-  console.log('Trigger - project')
-  touch(triggers.projAll)
-  await exist(items.blue, items.red)
-  clean()
+  async 'trigger - plain' () {
+    await this._trigger('dev', 'plain', 'plain')
+  }
 
-  console.log('Trigger - mix')
-  touch(triggers.mixAll)
-  await exist(items.mixBlue, items.mixRed)
-  clean()
+  async 'trigger - project' () {
+    await this._trigger('dev', 'project', ['blue', 'red'])
+  }
 
-  console.log('All OK.')
-  process.exit(0)
-}
+  async 'trigger - mix' () {
+    await this._trigger('dev', 'mix', ['mix.blue', 'mix.red'])
+  }
 
-test()
+  //
+  // Tests: observe with polling
+  //
+
+  async 'polling trigger - blue/skip' () {
+    const child = await this._spawn('dev:polling', 2000)
+    this._touch('blue/skip')
+    await this._wait(3000)
+    await this._notExist('blue')
+    child.kill()
+  }
+
+  async 'polling trigger - blue/sub-folder/skip' () {
+    const child = await this._spawn('dev:polling', 2000)
+    this._touch('blue/sub-folder/skip')
+    await this._wait(3000)
+    await this._notExist('blue')
+    child.kill()
+  }
+
+  async 'polling trigger - blue/bulk/exclude' () {
+    const child = await this._spawn('dev:polling', 2000)
+    this._touch('blue/bulk/exclude')
+    await this._wait(3000)
+    await this._notExist('blue')
+    child.kill()
+  }
+
+  async 'polling trigger - blue/bulk/include' () {
+    await this._trigger('dev:polling', 'blue/bulk/include', 'blue', 2000)
+  }
+
+  async 'polling trigger - red/project' () {
+    await this._trigger('dev:polling', 'red/project', 'red', 2000)
+  }
+
+  async 'polling trigger - blue/project' () {
+    await this._trigger('dev:polling', 'blue/project', 'blue', 2000)
+  }
+
+  async 'polling trigger - blue/sub-folder/project' () {
+    await this._trigger('dev:polling', 'blue/sub-folder/project', 'blue', 2000)
+  }
+
+  async 'polling trigger - red/mix' () {
+    await this._trigger('dev:polling', 'red/mix', 'mix.red', 2000)
+  }
+
+  async 'polling trigger - blue/mix' () {
+    await this._trigger('dev:polling', 'blue/mix', 'mix.blue', 2000)
+  }
+
+  async 'polling trigger - plain' () {
+    await this._trigger('dev:polling', 'plain', 'plain', 2000)
+  }
+
+  async 'polling trigger - project' () {
+    await this._trigger('dev:polling', 'project', ['blue', 'red'], 2000)
+  }
+
+  async 'polling trigger - mix' () {
+    await this._trigger('dev:polling', 'mix', ['mix.blue', 'mix.red'], 2000)
+  }
+})

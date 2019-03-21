@@ -152,12 +152,12 @@ class Runner {
 
         // Non-project pattern means all the projects apply.
         if (!pattern.includes('$PROJ')) {
-          rules.push({chain, pattern, projects})
+          rules.push({ chain, pattern, projects })
           continue
         }
         // Add rule for each project separately.
         for (const project of projects) {
-          rules.push({chain, pattern: pattern.replace(/\$PROJ/g, project), projects: [project]})
+          rules.push({ chain, pattern: pattern.replace(/\$PROJ/g, project), projects: [project] })
         }
       }
     }
@@ -171,9 +171,10 @@ class Runner {
     if (usePolling) {
       pathToWatch = []
       for (const rule of rules) {
-        // We can actually get files based on the directories from patterns, up until the asterisk.
-        // This drastically improves the perofmance as opposed to scanning the entire pathToWatch.
-        const entityPath = rule.pattern.split('*').shift()
+        // We can actually get files based on the directories from patterns, up until the first.
+        // occurence of a glob syntax. This drastically improves the perofmance as opposed to
+        // scanning the entire pathToWatch.
+        const entityPath = rule.pattern.split(/[?*+@!]/).shift()
         const files = this.getFiles(entityPath)
         pathToWatch = pathToWatch.concat(this.match(files, rule.pattern)) // Narrow down to actual pattern.
       }
@@ -211,7 +212,7 @@ class Runner {
       }
 
       // Add entry if it does not exist.
-      chainsToRun[rule.chain] = chainsToRun[rule.chain] || {projects: new Set(), files: new Set()}
+      chainsToRun[rule.chain] = chainsToRun[rule.chain] || { projects: new Set(), files: new Set() }
 
       // Add projects to entry.
       for (const project of rule.projects) {
@@ -281,7 +282,7 @@ class Runner {
 
   match (normalizedPaths, pattern) {
     // Paths should be already normalized to slashes.
-    const regex = globrex(pattern, {globstar: true}).regex
+    const regex = globrex(pattern, { globstar: true, extended: true }).regex
     return normalizedPaths.filter(p => regex.test(p))
   }
 
