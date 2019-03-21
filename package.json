@@ -51,7 +51,7 @@
     "generate:project": [
       "runna/test/triggers/project",
       "runna/test/triggers/$PROJ/**/project",
-      "![",
+      "runna/test/triggers/$PROJ/bulk/!(ext)*",
       "runna/test/triggers/does/not/exist"
     ],
     "generate:plain": [
