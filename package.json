@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -23,10 +23,12 @@
     "chalk": "^2.4.1",
     "globrex": "^0.1.1",
     "log-update": "^2.3.0",
+    "rimraf": "^3.0.0",
     "simple-watcher": "^4.0.0",
     "triala": "^0.3.0"
   },
   "scripts": {
+    "delete": "rimraf test/dist/junk",
     "test": "node test.js -v",
     "clean": "node test/tester.js --clean",
     "generate:project": "node test/tester.js --generate $PROJ --delay 500",
@@ -45,7 +47,8 @@
     "dev:long": "node index.js [ clean - generate:plain generate:project - generate:plain generate:project - generate:plain generate:project - generate:plain generate:project - generate:plain generate:project ] -w .. -p blue,red",
     "dev": "node index.js [ +background clean ] -w .. -p blue,red -v",
     "dev:polling": "node index.js [ +background clean ] -w .. -p blue,red -v -o",
-    "error": "node index.js [ foo ]"
+    "error": "node index.js [ foo ]",
+    "bin": "node index.js [ delete ]"
   },
   "observe": {
     "generate:project": [

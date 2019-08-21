@@ -39,7 +39,7 @@ test('runna', class {
   }
 
   async _spawn (script, delay) {
-    return new Promise(async resolve => {
+    return new Promise(resolve => {
       const args = require('./package.json').scripts[script].substr(5).split(' ')
       const child = cp.spawn('node', args)
 
@@ -79,6 +79,18 @@ test('runna', class {
     this._touch(trigger)
     await this._exist(...result)
     child.kill()
+  }
+
+  //
+  // Tests: run command
+  //
+
+  async 'rimraf' () {
+    const junk = path.resolve(DIST, 'junk')
+    fs.writeFileSync(junk)
+    assert(fs.existsSync(junk), 'junk does not exist')
+    await this._exec('npm run bin')
+    assert(!fs.existsSync(junk), 'junk exists')
   }
 
   //

@@ -90,7 +90,7 @@ class Runner {
   }
 
   async startScript (script, exitOnError) {
-    script.start(this.cfg.binaries, () => {
+    script.start(() => {
       this.updateStatus()
       script.hasFailed() && this.handleScriptError(exitOnError)
     })
@@ -247,28 +247,10 @@ class Runner {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'))
   }
 
-  resolveLocalBinaries (cfg) {
-    cfg.binaries = {}
-
-    const binPath = path.resolve(process.cwd(), 'node_modules', '.bin')
-    if (fs.existsSync(binPath)) {
-      for (const script of fs.readdirSync(binPath)) {
-        const scriptPath = path.resolve(binPath, script)
-        if (process.platform === 'win32' && script.endsWith('.cmd')) {
-          cfg.binaries[script.slice(0, -4)] = scriptPath
-        } else {
-          cfg.binaries[script] = path.resolve(binPath, script)
-        }
-      }
-    }
-
-    return cfg
-  }
-
   getCfg () {
     const cfg = this.getJson(path.join(process.cwd(), 'package.json'))
     cfg.projects = cfg.projects || {}
-    return this.resolveLocalBinaries(cfg)
+    return cfg
   }
 
   getLogLines (buf, name, log) {
