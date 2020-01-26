@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "2.4.2",
+  "version": "3.0.0",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -20,9 +20,9 @@
     "runna": "./bin/runna"
   },
   "dependencies": {
-    "chalk": "^2.4.1",
-    "globrex": "^0.1.1",
-    "log-update": "^2.3.0",
+    "chalk": "^3.0.0",
+    "globrex": "^0.1.2",
+    "log-update": "^3.3.0",
     "simple-watcher": "^4.0.0"
   },
   "devDependencies": {

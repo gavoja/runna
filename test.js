@@ -16,6 +16,12 @@ test('runna', class {
   // Helpers
   //
 
+  async _before () {
+    if (!fs.existsSync(DIST)) {
+      fs.mkdirSync(DIST)
+    }
+  }
+
   async _wait (ms) {
     return new Promise(resolve => setTimeout(resolve, ms))
   }

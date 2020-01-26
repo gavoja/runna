@@ -62,7 +62,7 @@ class Runner {
   //
 
   // chain ~ '+foo - bar baz'
-  async runChain (chain, files = [], projects = [], exitOnError = true) {
+  async runChain (chain, files = [], projects = []) {
     const timestamp = Date.now()
 
     this.removeCompletedScriptsFromPipeline()
@@ -77,10 +77,10 @@ class Runner {
     }
 
     // Run all the scripts in a chain.
-    let msg = projects.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(projects)}` : chalk.magenta(chain)
+    const msg = projects.length ? `${chalk.magenta(chain)} :: ${chalk.magenta(projects)}` : chalk.magenta(chain)
     log.dbg('runna', `Chain ${msg} started.`)
     for (const script of this.pipeline) {
-      await this.startScript(script, exitOnError)
+      await this.startScript(script)
     }
 
     // Finalize.
@@ -89,10 +89,11 @@ class Runner {
     log.dbg('runna', `Chain ${msg} completed in ${duration} ms.`)
   }
 
-  async startScript (script, exitOnError) {
+  async startScript (script) {
     script.start(() => {
       this.updateStatus()
-      script.hasFailed() && this.handleScriptError(exitOnError)
+      // If any of the scripts fail, set the exit code to 1.
+      script.hasFailed() && (process.exitCode = 1)
     })
     this.updateStatus()
 
@@ -103,7 +104,7 @@ class Runner {
   }
 
   async waitForAllChildrenToComplete () {
-    log.dbg('runna', `Waiting for all running scripts to complete...`)
+    log.dbg('runna', 'Waiting for all running scripts to complete...')
     while (this.pipeline.filter(s => s.isRunning() && !s.isPause() && !s.isBackground()).length !== 0) {
       await this.wait(CHILD_EXIT_WAIT)
     }
@@ -114,15 +115,6 @@ class Runner {
       if (this.pipeline[ii].hasEnded()) {
         this.pipeline.splice(ii, 1)
       }
-    }
-  }
-
-  handleScriptError (exitOnError) {
-    if (exitOnError) {
-      log.dbg('runna', `Shutting down.`)
-      log.end()
-      process.exitCode = 1
-      process.exit(1)
     }
   }
 
