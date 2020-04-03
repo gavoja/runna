@@ -1,6 +1,6 @@
 {
   "name": "runna",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Runna - process based task runner for Node",
   "main": "index.js",
   "repository": {
@@ -20,14 +20,14 @@
     "runna": "./bin/runna"
   },
   "dependencies": {
-    "chalk": "^3.0.0",
+    "chalk": "^4.0.0",
     "globrex": "^0.1.2",
-    "log-update": "^3.3.0",
-    "simple-watcher": "^4.0.0"
+    "log-update": "^4.0.0",
+    "simple-watcher": "^4.0.1"
   },
   "devDependencies": {
     "triala": "^0.3.0",
-    "rimraf": "^3.0.0"
+    "rimraf": "^3.0.2"
   },
   "scripts": {
     "delete": "rimraf test/dist/junk",
